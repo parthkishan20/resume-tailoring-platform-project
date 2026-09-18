@@ -178,6 +178,22 @@ accepted debt with a reason.
 **Worktrees.** Any task that restructures directories runs in a dedicated git worktree so a
 half-finished move never breaks a sibling agent. Tasks that only add files run in the shared tree.
 
+**Sandbox note for this project (2026-09-18):** the orchestrating session's sandbox denies writes to
+`.claude/commands/agents/` and to `.git/config`, even under the repo root's normal write allowance.
+Plain `git worktree add` therefore fails checking out `.claude/`, and `git sparse-checkout init` fails
+because it needs to set `extensions.worktreeConfig` in the shared `.git/config`. Working pattern:
+
+```bash
+mkdir -p .worktrees   # gitignored
+git worktree add -q --no-checkout .worktrees/<name> -b wave<N>/<name> <base-branch>
+git -C .worktrees/<name> checkout -q wave<N>/<name> -- . ':!.claude'
+```
+
+This checks out everything except `.claude/`, touches no shared git config, and each agent's own tool
+permissions inside its worktree are unaffected — only the orchestrating session's sandbox is stricter
+about that specific path. `.worktrees/` is gitignored; remove finished worktrees with
+`git worktree remove --force .worktrees/<name>` before deleting the directory.
+
 **Merge order within a wave** is declared at the integration point, not negotiated by agents. Backend
 structural changes land before anything that imports them.
 

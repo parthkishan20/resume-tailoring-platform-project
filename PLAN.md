@@ -352,6 +352,30 @@ Actual order, by real dependency rather than by wish:
 | 1-b | **1.1** backend-core, **1.4** design-system | task 0.8 merged (releases the two manifests) |
 | 1-c | **1.2** data, **1.3** rendering, **1.5** qa-unit | 1.1 merged (the new layout exists to build into) |
 
+**Reconciliation checklist for batch 1-c, recorded 2026-09-18 as 1.5 landed first.**
+Task 1.5 built the hermetic test harness against the post-1.1, pre-1.2/1.3 tree in its own worktree,
+with no visibility into what 1.2 and 1.3 are doing concurrently in theirs. It flagged its own
+re-pointing needs precisely rather than assuming its work merges cleanly. This is the checklist for
+whoever performs the merge (orchestrator):
+
+- `conftest.py:isolated_settings` → repoint to `core.config.get_settings`, `deps._backend` (or
+  wherever 1.3/2.2 relocate `deps`; a comment in the pre-1.3 `deps.py` already says 2.2 moves it to
+  `api/deps.py`, so this may need to move twice).
+- `conftest.py:db_path` → **rewrite, not repoint.** 1.2 replaces `database.init_db` with a migration
+  runner; the fixture must apply migrations against the fresh `tmp_path` file, not call a function that
+  will no longer exist.
+- `conftest.py:client` / `clean_dependency_overrides` → repoint to wherever 1.3 lands `app`,
+  `get_backend`, `lifespan`.
+- **Two LLM stub tables must become one.** `backend/tests/helpers/llm_stub.py` (1.5) and 1.3's
+  `llm/stub.py` are byte-identical today (copied verbatim, including the en-dashes that need
+  `# noqa: RUF001`). Keep one as the source, have the other import it. If 1.3 changes a canned response
+  without this merge, the unit suite and the `LLM_MOCK=true` e2e stack silently disagree.
+- `tests/helpers/simulator.py`'s `mock_pdf_bytes` fixture points at `backend/tests/fixtures/mock.pdf`,
+  which 1.3 is moving into the package as part of closing D-64. Repoint together.
+- `ConfigurableBackendAPI` is now duck-typed rather than subclassing `BackendAPI`, deliberately, so it
+  survives 1.3's port-boundary move. Revisit only if 1.3 makes the facade something FastAPI or a router
+  actually type-checks at runtime, which nothing does today.
+
 **Deviation, recorded 2026-09-18:** batch 1-b ran in the **shared tree**, not the dedicated worktrees
 this table and `AGENTS.md` §5 specify. That was an orchestrator decision, and it held because 1.1 owns
 `backend/**` and 1.4 owns `frontend/**` — genuinely disjoint, so there was nothing to collide over. It

@@ -95,3 +95,4 @@ planning/master-resume.yaml
 # reports are preserved under docs/archive/superpowers-sdd/; what remains here
 # is multi-megabyte raw review dumps that duplicate the git history.
 .superpowers/
+.worktrees/
