@@ -230,6 +230,43 @@ passing. Lowering it is not a fix.
 - Test order is shuffled by `pytest-randomly` on every run. A test that only passes in one order
   is a broken test, not a flaky one.
 
+#### The backend harness
+
+The rules above are enforced by `backend/tests/conftest.py`, not left to authors to remember. Four
+autouse fixtures wrap every test: `os.environ` is snapshotted and restored, every `Settings` field
+is pinned to a test value, outbound IP connections raise, and FastAPI's dependency-override table is
+put back. There is no opt-out and none is needed.
+
+Three consequences worth knowing before you write a test:
+
+- **`backend/.env` cannot affect the suite.** Every setting is pinned, and environment variables win
+  over the dotenv file, so a real key on your disk changes nothing. You get the same run CI does.
+- **Nothing binds a port.** Route tests run the ASGI app in-process through `httpx.ASGITransport`.
+  Any number of test sessions can run at once. If you ever genuinely need to bind, ask the OS for a
+  free port with `bind(("127.0.0.1", 0))` — never a literal.
+- **A test that reaches the network fails and names the address it wanted.** Stub at the port
+  boundary instead.
+
+Pick the smallest fixture that does the job:
+
+| You need | Ask for | You get |
+|---|---|---|
+| nothing — a pure function | — | the autouse fixtures still run |
+| a database | `db_path` | a `str` path to this test's own SQLite file under `tmp_path`, schema applied, defaults seeded |
+| to call the API | `client` + `@pytest.mark.anyio` | an `httpx.AsyncClient`; the app's real lifespan runs, so the test boots the way production does |
+| to control the LLM or the renderer | `sim` (alongside `client`) | `sim.sim_llm.set_complete_response(...)` / `set_complete_error(...)` / `set_stream_chunks([...])`, `sim.sim_pdf_render.set_response(b"...")` |
+| the LLM stub on its own | `deterministic_llm` | the canned-response stub, outside the API |
+| real PDF bytes | `mock_pdf_bytes` | the committed fixture file |
+
+Leave a stubbed port unset and it answers from the canned table in `backend/tests/helpers/llm_stub.py`
+— one response per prompt shape, identical on every machine and every run. That table is the single
+source for what a fake LLM says; do not add a second one.
+
+Assert on what was **asked**, not only on what came back. `sim.sim_llm.complete_call_count == 2` is
+what pins the two-pass generate-then-audit pipeline, and `sim.sim_llm.last_complete_messages` is what
+proves rules reach the prompt. Both survive a refactor that a response-only assertion would not
+notice.
+
 ### Copy
 
 - Everything user-visible follows [`docs/design/DESIGN-SYSTEM.md`](./docs/design/DESIGN-SYSTEM.md)
