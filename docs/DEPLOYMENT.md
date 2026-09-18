@@ -179,47 +179,75 @@ There is also a `db/.gitkeep` directory at the repo root that nothing uses. Igno
 
 ### Backup and restore
 
-**There is no backup mechanism and no restore procedure.** Not a weak one: none. No script, no
-sidecar, no cron, no documented manual process, nothing in `scripts/`. `master_resume_history`
-keeps 10 versions of the master resume and nothing reads them; `generated_resumes.yaml_content`
-has no history at all.
-
-This means a single `docker compose down -v` is **total, unrecoverable loss** of every resume.
-It is registered as D-03 and is a P0.
-
-Until task 1.2 lands a real script, the manual equivalent is to copy both volumes out. Use
-SQLite's online backup API rather than `cp`, because `cp` on a live database can capture a torn
-file:
+`scripts/backup.sh` and `scripts/restore.sh`. Both work against a running compose stack or
+against local files, and both auto-detect which: if the `app` service is up they use it,
+otherwise they use `DB_PATH` and `PDFS_DIR`. Pass `--docker` or `--local` to decide explicitly.
 
 ```bash
-# database
-docker compose exec app python -c \
-  "import sqlite3,sys; src=sqlite3.connect('/app/db/resumedb.db'); \
-   dst=sqlite3.connect('/app/db/backup.db'); src.backup(dst); dst.close(); src.close()"
-docker compose cp app:/app/db/backup.db ./backup-$(date +%F).db
+./scripts/backup.sh                       # one backup into ./backups/<UTC timestamp>/
+./scripts/backup.sh --out /mnt/backups    # somewhere durable, which is the point
+BACKUP_KEEP=14 ./scripts/backup.sh        # keep 14 instead of the default 7
 
-# PDFs
-docker compose cp app:/app/pdfs ./pdfs-backup-$(date +%F)
+./scripts/restore.sh backups/20260918T074103Z
 ```
 
-Restoring is the reverse copy with the container stopped. **This procedure has not been tested
-in this repository.** Treat it as a starting point, verify it on your own data before you rely
-on it, and delete `/app/db/backup.db` afterwards so it does not sit inside the live volume.
+Each backup is one self-contained directory:
 
-> **Target, not built yet.** `deploy/scripts/backup.sh` and `restore.sh`, a retention policy of
-> 7 daily plus 4 weekly, an automatic backup before the first migration of any run, and a
-> `make backup` / `make restore` entry point. Task 1.2, with the release side in 3.4.
+| File | Contents |
+|---|---|
+| `resumedb.db` | the database, snapshotted with SQLite's online backup API |
+| `pdfs/` | every generated PDF |
+| `MANIFEST` | schema version, per-table row counts, size, and the database's sha256 |
+
+Three things about this are deliberate.
+
+**The database is never copied with `cp`.** `cp` on a live database can capture a torn file, and
+with WAL enabled it also misses whatever is still in the `-wal` sidecar. `backup.sh` uses
+SQLite's online backup API, which takes a consistent snapshot while the application is writing,
+so a backup does not require downtime.
+
+**Every backup is verified before it counts.** `PRAGMA integrity_check` runs on the snapshot, and
+retention only prunes after that passes. An unverified backup is a guess.
+
+**Restoring is defended.** `restore.sh` verifies the backup opens, takes a safety backup of the
+current state into `backups/pre-restore/` (skip with `--no-safety-backup`), prints the manifest,
+and then asks for confirmation (skip with `--force`). It removes the `-wal` and `-shm` sidecars
+before writing the restored file, because dropping a database next to a stale write-ahead log is
+how a restore silently ends up as a mixture of the two.
+
+A restored database does not need to match the current schema. The application migrates on start,
+so a backup taken at an older schema version is brought forward on the next boot.
+
+`./backups/` writes a `.gitignore` containing `*` into itself the first time it is created. A
+backup holds the owner's real name, email, phone and address, and that is a class of accident
+worth making structurally impossible rather than remembering not to have (D-01).
+
+> **Still target, not built.** Scheduling. Nothing runs these automatically: they are a command
+> you or a cron job invokes. Weekly-tier retention (7 daily plus 4 weekly), an automatic backup
+> before the first migration of a run, a `make backup` / `make restore` entry point, and the move
+> to `deploy/scripts/` belong to task 3.4.
 
 ### Migrations
 
-**There is no migration mechanism.** `init_db` runs the full `CREATE TABLE IF NOT EXISTS` script
-on every boot. Against an existing volume that script is a **no-op**, so a schema change deploys
-cleanly, changes nothing, and the next query raises `no such column` (D-02).
+`backend/migrations/NNNN_name.sql`, applied in numeric order at startup by
+`resumetailor.db.migrate`, with a `schema_version` table recording what has been applied. A
+migration and the row recording it commit in one transaction, so a migration either applies and
+is recorded or does neither, and running the same migration twice is impossible.
 
-If you change `backend/db/schema.sql` today, existing databases will not pick it up. See
-[`TROUBLESHOOTING.md`](./TROUBLESHOOTING.md) §3.
+```bash
+# what version is a database at?
+sqlite3 backend/db/resumedb.db "SELECT MAX(version) FROM schema_version"
+```
 
-The chosen mechanism for fixing this is recorded in
+Migrations run in the lifespan, before the application serves anything. A failure there fails the
+boot rather than degrading into runtime errors, which is the point: the previous mechanism ran
+`CREATE TABLE IF NOT EXISTS` on every boot, so against an existing volume a schema change applied
+nothing at all and surfaced later as `no such column` (D-02).
+
+To change the schema, add the next numbered file. Do not edit an applied migration and do not
+edit `backend/db/schema.sql`, which is no longer read by anything.
+
+The choice of numbered SQL over Alembic is recorded in
 [ADR 0002](./adr/0002-numbered-sql-migrations.md).
 
 ### The healthcheck

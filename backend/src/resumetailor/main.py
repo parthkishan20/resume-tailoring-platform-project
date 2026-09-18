@@ -73,13 +73,22 @@ def _ensure_directories(settings: Settings) -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    """Validate configuration, then make sure the storage layout exists."""
-    from resumetailor.database import init_db
+    """Validate configuration, lay out storage, migrate, seed.
+
+    Migration replaces the old `init_db`, which re-ran a
+    `CREATE TABLE IF NOT EXISTS` script on every boot and so applied no schema
+    change to an existing database at all (D-02). A failure here fails the
+    boot: a process that cannot bring its database to a known version has no
+    business serving requests against it.
+    """
+    from resumetailor.db.migrate import migrate
+    from resumetailor.db.seed import seed_defaults
 
     settings = get_settings()
     validate_startup_settings(settings)
     await asyncio.to_thread(_ensure_directories, settings)
-    await asyncio.to_thread(init_db, settings.DB_PATH)
+    await asyncio.to_thread(migrate, settings.DB_PATH)
+    await asyncio.to_thread(seed_defaults, settings.DB_PATH)
     logger.info(
         "application ready",
         extra={"db_path": settings.DB_PATH, "llm_mock": settings.LLM_MOCK},

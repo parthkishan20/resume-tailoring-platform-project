@@ -3,7 +3,7 @@ import asyncio
 from fastapi import APIRouter
 from pydantic import BaseModel
 from resumetailor.core.config import get_settings
-from resumetailor.database import get_rules, upsert_rules, reset_rules
+from resumetailor.db.repositories import get_rules, upsert_rules, reset_rules
 
 router = APIRouter()
 
