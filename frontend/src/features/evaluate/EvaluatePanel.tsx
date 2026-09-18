@@ -120,6 +120,7 @@ export function EvaluatePanel() {
       <JobDescriptionField
         id="evaluate-job-description"
         label="Job description"
+        testId="evaluate-job-description"
         disabled={running}
       />
 
@@ -161,7 +162,12 @@ export function EvaluatePanel() {
           title="The resume was not evaluated"
           cause={run.error ?? undefined}
           action={
-            <Button variant="secondary" size="sm" onClick={() => void evaluate()}>
+            <Button
+              variant="secondary"
+              size="sm"
+              data-testid="evaluate-retry"
+              onClick={() => void evaluate()}
+            >
               Try again
             </Button>
           }

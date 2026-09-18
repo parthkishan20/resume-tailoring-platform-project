@@ -59,6 +59,7 @@ export function RenameResumeDialog({
         >
           <Input
             label="Resume name"
+            data-testid="rename-input"
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             autoFocus
