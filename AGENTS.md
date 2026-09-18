@@ -194,6 +194,25 @@ permissions inside its worktree are unaffected — only the orchestrating sessio
 about that specific path. `.worktrees/` is gitignored; remove finished worktrees with
 `git worktree remove --force .worktrees/<name>` before deleting the directory.
 
+**Corollary — check every merge, not just every worktree commit.** Because a worktree branch never had
+`.claude/` checked out, `.claude/` is absent from every ref built there. A subsequent `git merge` in the
+main checkout can still stage those paths as deletions even when neither branch's *commit* actually
+changed them: `git merge-recursive` may attempt to unlink and rewrite a path that is identical on both
+sides as an artifact of how it applies the three-way diff, and the sandbox denies the unlink, leaving
+the index saying "deleted" while the working tree (untouched, since the unlink failed) still has the
+real file. This is not the same bug as an agent's own stray `git add -A` (which stages the deletion
+because the file is genuinely absent from its working tree) — it can happen on a completely clean
+merge, on the orchestrator's own side, with no agent involved. After **every** merge of a worktree
+branch, before committing the merge:
+
+```bash
+git status --porcelain | grep -i claude   # any `D  .claude/...` line is this artifact
+```
+
+If anything shows, diff the working-tree file against `HEAD:<path>` (same hash algorithm on both
+sides) to confirm it is genuinely unchanged, then `git add <path>` to re-stage it as unchanged rather
+than deleted. Never accept a `.claude/` deletion into a merge commit without this check.
+
 **Merge order within a wave** is declared at the integration point, not negotiated by agents. Backend
 structural changes land before anything that imports them.
 
