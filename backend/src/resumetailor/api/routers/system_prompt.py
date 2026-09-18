@@ -3,7 +3,7 @@ import asyncio
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from resumetailor.core.config import get_settings
-from resumetailor.database import (
+from resumetailor.db.repositories import (
     get_system_prompt,
     upsert_system_prompt,
     reset_system_prompt,

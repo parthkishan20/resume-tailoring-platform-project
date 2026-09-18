@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from resumetailor.backend_api import BackendAPI
 from resumetailor.core.config import get_settings
-from resumetailor.database import (
+from resumetailor.db.repositories import (
     list_resumes, create_resume, get_resume, update_resume, delete_resume,
     get_master_resume, get_rules,
 )
@@ -30,8 +30,20 @@ def _pdfs_dir() -> str:
     return get_settings().PDFS_DIR
 
 
+def _jsonable(value: object) -> object:
+    """Serialise a repository model inside an SSE frame.
+
+    Repositories return Pydantic models rather than dicts now; `json.dumps`
+    does not know how to encode one. The frame's contents are unchanged: a
+    model dumps to exactly the keys the raw `sqlite3.Row` dict carried.
+    """
+    if isinstance(value, BaseModel):
+        return value.model_dump()
+    raise TypeError(type(value))
+
+
 def _sse(event: str, data: dict) -> str:
-    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+    return f"event: {event}\ndata: {json.dumps(data, default=_jsonable)}\n\n"
 
 
 class GenerateRequest(BaseModel):
@@ -66,10 +78,13 @@ async def generate_resume_stream(
             yield _sse("progress", {"message": "Analyzing job description..."})
 
             # Normalise master resume to valid rendercv before feeding to the LLM
-            master_yaml = normalize_to_rendercv(master["yaml_content"])
+            master_yaml = normalize_to_rendercv(master.yaml_content)
 
-            # User-configured limits override the prompt's default counts
-            rules_suffix = rules_block(await asyncio.to_thread(get_rules, _db_path()))
+            # User-configured limits override the prompt's default counts.
+            # `rules_block` takes dicts; the repository returns models now, and
+            # prompts.py belongs to another task.
+            rules = await asyncio.to_thread(get_rules, _db_path())
+            rules_suffix = rules_block([rule.model_dump() for rule in rules])
 
             # Pass 1: generate
             gen_response = await api.complete(
@@ -119,7 +134,7 @@ async def generate_resume_stream(
             row = await asyncio.to_thread(
                 create_resume, _db_path(), name, body.job_description, final_yaml
             )
-            resume_id = row["id"]
+            resume_id = row.id
 
             # Save PDF
             pdf_path = Path(_pdfs_dir()) / f"{resume_id}.pdf"
@@ -168,9 +183,9 @@ async def patch_generated(resume_id: int, body: ResumeUpdate):
 @router.get("/api/resumes/{resume_id}/pdf")
 async def get_pdf(resume_id: int):
     row = await asyncio.to_thread(get_resume, _db_path(), resume_id)
-    if row is None or not row.get("pdf_path"):
+    if row is None or not row.pdf_path:
         raise HTTPException(status_code=404, detail="PDF not found")
-    pdf_path = Path(_pdfs_dir()) / row["pdf_path"]
+    pdf_path = Path(_pdfs_dir()) / row.pdf_path
     if not pdf_path.exists():
         raise HTTPException(status_code=404, detail="PDF file not found")
     return FileResponse(str(pdf_path), media_type="application/pdf",
@@ -182,7 +197,7 @@ async def render_pdf(resume_id: int, api: BackendAPI = Depends(get_backend)):
     row = await asyncio.to_thread(get_resume, _db_path(), resume_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Resume not found")
-    pdf_bytes = await api.render(row["yaml_content"])
+    pdf_bytes = await api.render(row.yaml_content)
     pdf_path = Path(_pdfs_dir()) / f"{resume_id}.pdf"
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
     pdf_path.write_bytes(pdf_bytes)
@@ -198,6 +213,6 @@ async def delete_generated(resume_id: int):
     deleted = await asyncio.to_thread(delete_resume, _db_path(), resume_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Resume not found")
-    if row and row.get("pdf_path"):
-        pdf_path = Path(_pdfs_dir()) / row["pdf_path"]
+    if row and row.pdf_path:
+        pdf_path = Path(_pdfs_dir()) / row.pdf_path
         pdf_path.unlink(missing_ok=True)

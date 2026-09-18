@@ -104,11 +104,17 @@ def isolated_settings(tmp_path, monkeypatch):
 
 @pytest.fixture
 def db_path(isolated_settings) -> str:
-    """This test's own SQLite database, schema applied and defaults seeded."""
-    from resumetailor.database import init_db
+    """This test's own SQLite database, migrated and seeded.
+
+    The same two steps the application's lifespan runs, in the same order, so a
+    test never sees a schema the running app would not produce.
+    """
+    from resumetailor.db.migrate import migrate
+    from resumetailor.db.seed import seed_defaults
 
     path = str(isolated_settings.db_path)
-    init_db(path)
+    migrate(path)
+    seed_defaults(path)
     return path
 
 

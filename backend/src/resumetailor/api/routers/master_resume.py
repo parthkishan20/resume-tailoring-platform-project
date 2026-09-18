@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from resumetailor.backend_api import BackendAPI
 from resumetailor.core.config import get_settings
-from resumetailor.database import (
+from resumetailor.db.repositories import (
     get_master_resume,
     upsert_master_resume,
     delete_master_resume,
@@ -121,7 +121,7 @@ async def preview_master_resume(
         raise HTTPException(status_code=404, detail="No master resume found")
 
     try:
-        pdf_bytes = await backend.render(normalize_to_rendercv(row["yaml_content"]))
+        pdf_bytes = await backend.render(normalize_to_rendercv(row.yaml_content))
     except RenderError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 

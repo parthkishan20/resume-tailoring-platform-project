@@ -15,7 +15,7 @@ async def test_list_resumes_empty(client):
 
 @pytest.mark.anyio
 async def test_generate_resume_sse_stream(client, sim, db_path):
-    from resumetailor.database import upsert_master_resume
+    from resumetailor.db.repositories import upsert_master_resume
     import asyncio
     await asyncio.to_thread(upsert_master_resume, db_path, MOCK_GENERATION_RESULT_YAML)
 
@@ -36,7 +36,7 @@ async def test_generate_resume_sse_stream(client, sim, db_path):
 
 @pytest.mark.anyio
 async def test_generate_resume_sse_error_llm_auth(client, sim, db_path):
-    from resumetailor.database import upsert_master_resume
+    from resumetailor.db.repositories import upsert_master_resume
     import asyncio
     await asyncio.to_thread(upsert_master_resume, db_path, MOCK_GENERATION_RESULT_YAML)
 
@@ -63,7 +63,7 @@ async def test_generate_resume_sse_error_llm_auth(client, sim, db_path):
 
 @pytest.mark.anyio
 async def test_generate_injects_rules_into_prompts(client, sim, db_path):
-    from resumetailor.database import upsert_master_resume, upsert_rules
+    from resumetailor.db.repositories import upsert_master_resume, upsert_rules
     import asyncio
     await asyncio.to_thread(upsert_master_resume, db_path, MOCK_GENERATION_RESULT_YAML)
     await asyncio.to_thread(
@@ -93,8 +93,8 @@ async def test_get_resume_404(client):
 
 @pytest.mark.anyio
 async def test_delete_resume(client, sim, db_path):
-    from resumetailor.database import create_resume
+    from resumetailor.db.repositories import create_resume
     import asyncio
     r = await asyncio.to_thread(create_resume, db_path, "Test", "JD", "cv:\n  name: X")
-    response = await client.delete(f"/api/resumes/{r['id']}")
+    response = await client.delete(f"/api/resumes/{r.id}")
     assert response.status_code == 204
