@@ -5,7 +5,10 @@ import { api, ApiError } from "@/lib/api";
 
 jest.mock("@/lib/api", () => {
   const actual = jest.requireActual("@/lib/api");
-  return { ApiError: actual.ApiError, api: { getMasterResume: jest.fn(), saveMasterResume: jest.fn() } };
+  return {
+    ApiError: actual.ApiError,
+    api: { getMasterResume: jest.fn(), saveMasterResume: jest.fn() },
+  };
 });
 
 // The shell's children pull in CodeMirror, SSE, and PdfPreview; none are under test here.
@@ -20,7 +23,10 @@ jest.mock("@/components/EvaluationPanel", () => ({ __esModule: true, default: ()
 jest.mock("@/components/ChatDrawer", () => ({ __esModule: true, default: () => <div /> }));
 
 const mockResume = {
-  id: 1, user_id: "default", yaml_content: "cv:\n  name: Test", updated_at: "2026-01-01",
+  id: 1,
+  user_id: "default",
+  yaml_content: "cv:\n  name: Test",
+  updated_at: "2026-01-01",
 };
 
 const getMasterResume = api.getMasterResume as jest.Mock;

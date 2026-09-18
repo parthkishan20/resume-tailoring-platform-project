@@ -31,5 +31,3 @@ src/__tests__/ResumeListPanel.test.tsx
 # These two were added by task 0.1 while 0.8 was in flight. They are on this
 # list only so the gate can go green in the same commit that introduces it;
 # they are new code and should be the first entries removed.
-src/__tests__/WorkstationShell.test.tsx
-src/__tests__/api.test.ts

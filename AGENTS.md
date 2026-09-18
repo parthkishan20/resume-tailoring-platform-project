@@ -230,7 +230,9 @@ A task is done when **all** of these hold. There is no partial credit.
 
 ## 8. Quality gates
 
-`make check` runs all of these. CI runs the same target, so local green means CI green.
+`make check` runs all of these except the one noted below. CI runs the same targets, so local green
+means CI green. A sandboxed or read-only home directory needs `UV_CACHE_DIR` and `npm_config_cache`
+exported; uv's cache is global by design and the Makefile deliberately does not override it.
 
 | Gate | Tool | Threshold |
 |---|---|---|
@@ -244,7 +246,7 @@ A task is done when **all** of these hold. There is no partial credit.
 | E2E | `playwright test` | all pass, hermetic, no live API key |
 | Accessibility | `axe` on every route | zero serious or critical |
 | Contract | OpenAPI ↔ generated TS types | in sync, checked in CI |
-| Secrets | `gitleaks` | zero findings |
+| Secrets | `gitleaks` via `make secrets` | zero findings. **Deliberately not part of `make check`**, so `check` stays runnable offline: pre-commit has to fetch and build the gitleaks hook environment on first use. It runs in CI on every push and in the pre-commit hook on every commit, so nothing reaches a branch unscanned. |
 
 ---
 

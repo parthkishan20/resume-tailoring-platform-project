@@ -53,21 +53,21 @@ test("a 200 with a JSON body is still parsed", async () => {
 
 test("getMasterResume maps a 404 to null", async () => {
   fetchMock.mockResolvedValue(
-    mockResponse(404, JSON.stringify({ detail: "No master resume found" }), "Not Found")
+    mockResponse(404, JSON.stringify({ detail: "No master resume found" }), "Not Found"),
   );
   await expect(api.getMasterResume()).resolves.toBeNull();
 });
 
 test("getMasterResume surfaces a 500 rather than reporting no resume", async () => {
   fetchMock.mockResolvedValue(
-    mockResponse(500, JSON.stringify({ error: "database is locked", code: "DB_ERROR" }))
+    mockResponse(500, JSON.stringify({ error: "database is locked", code: "DB_ERROR" })),
   );
   await expect(api.getMasterResume()).rejects.toThrow("database is locked");
 });
 
 test("getMasterResume surfaces a 503", async () => {
   fetchMock.mockResolvedValue(
-    mockResponse(503, JSON.stringify({ error: "provider unavailable", code: "LLM_UNAVAILABLE" }))
+    mockResponse(503, JSON.stringify({ error: "provider unavailable", code: "LLM_UNAVAILABLE" })),
   );
   await expect(api.getMasterResume()).rejects.toMatchObject({
     status: 503,
@@ -84,14 +84,14 @@ test("getMasterResume surfaces a network failure", async () => {
 
 test("an HTTPException {detail} body reaches the caller", async () => {
   fetchMock.mockResolvedValue(
-    mockResponse(404, JSON.stringify({ detail: "Resume not found" }), "Not Found")
+    mockResponse(404, JSON.stringify({ detail: "Resume not found" }), "Not Found"),
   );
   await expect(api.getResume(3)).rejects.toThrow("Resume not found");
 });
 
 test("a custom handler {error, code} body reaches the caller with its code", async () => {
   fetchMock.mockResolvedValue(
-    mockResponse(500, JSON.stringify({ error: "rendercv exited 1", code: "RENDER_FAILED" }))
+    mockResponse(500, JSON.stringify({ error: "rendercv exited 1", code: "RENDER_FAILED" })),
   );
   await expect(api.renderResume(3)).rejects.toMatchObject({
     name: "ApiError",
@@ -109,7 +109,7 @@ test("thrown errors are ApiError instances", async () => {
 test("a 422 whose detail is not a string falls back to the status text", async () => {
   const detail = [{ loc: ["body", "yaml_content"], msg: "field required" }];
   fetchMock.mockResolvedValue(
-    mockResponse(422, JSON.stringify({ detail }), "Unprocessable Entity")
+    mockResponse(422, JSON.stringify({ detail }), "Unprocessable Entity"),
   );
   await expect(api.saveMasterResume("cv: {}")).rejects.toThrow("Unprocessable Entity");
 });
