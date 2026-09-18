@@ -86,8 +86,8 @@ Run frontend and backend separately for hot reload:
 ```bash
 cd backend
 uv sync
-LLM_MOCK=true DB_PATH=/tmp/resumedb.db PDFS_DIR=/tmp/pdfs \
-  uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+PYTHONPATH=src LLM_MOCK=true DB_PATH=/tmp/resumedb.db PDFS_DIR=/tmp/pdfs \
+  uv run uvicorn resumetailor.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 **Frontend**
@@ -184,7 +184,7 @@ LiteLLM is used under the hood, so `OPENAI_API_KEY` works with any compatible pr
 └─────────────────────────────────────────┘
 ```
 
-Generation and evaluation use **Server-Sent Events (SSE)** so progress streams to the UI in real time. The YAML normalizer (`backend/app/yaml_utils.py`) translates any LLM-generated YAML into valid rendercv schema before rendering.
+Generation and evaluation use **Server-Sent Events (SSE)** so progress streams to the UI in real time. The YAML normalizer (`backend/src/resumetailor/yaml_utils.py`) translates any LLM-generated YAML into valid rendercv schema before rendering.
 
 ---
 
