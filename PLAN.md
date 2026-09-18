@@ -397,7 +397,20 @@ Peak parallelism is three, not six. On a codebase this size that is the honest c
 - [ ] **2.4** `security` — Publish on loopback only as the interim answer to D-28 (see D4, and note the in-container bind stays `0.0.0.0`); rate limiting; input length and body limits (D-47); streaming upload cap (D-48); scrubbed subprocess env (D-49); non-root container and tmpfs render scratch (D-50); opaque client errors with detail logged server-side (D-53); path-traversal guard (D-25); CORS decision recorded
 - [ ] **2.5** `backend-domain` — Tailoring and evaluation extracted into services; validate on every write path (D-04); normalize on the render path too (D-57)
 
-**Integration point I2.**
+**Wave 2 is not actually five-way parallel either. Resequenced 2026-09-18, before launch,**
+on the same evidence wave 1 already produced: task 2.2 needs `response_model` on every route,
+including `resumes.py` and `evaluate.py`, and task 2.5 needs to gut the bodies of those exact
+two files to move their business logic into `domain/`. Building both against the same
+pre-wave router files, in separate worktrees, guarantees a rewrite-sized conflict rather than
+a line-level one.
+
+| Batch | Tasks | Gate |
+|---|---|---|
+| 2-a | **2.1** llm, **2.3** frontend-shell, **2.4** security | none — mutually disjoint files (`llm/`; `frontend/src/app` + `features/workspace`; `core/security.py`, `docker-compose.yml`, `rendering/runner.py`'s env scrub, a two-line path-traversal guard in `resumes.py`) |
+| 2-b | **2.5** backend-domain | 2-a merged — wants the stabilized LLM port from 2.1, and needs the traversal guard already merged rather than reproducing it |
+| 2-c | **2.2** api-contract | 2-b merged — annotates the routers 2.5 already thinned, rather than annotating what 2.5 is about to delete |
+
+**Integration point I2.** After 2-c.
 
 ### Wave 3 — Features and hardening (5 parallel)
 
