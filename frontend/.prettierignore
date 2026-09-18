@@ -7,12 +7,15 @@ package-lock.json
 
 # --- LEGACY EXEMPTIONS ------------------------------------------------------
 # `prettier --check` is enforced on every other file, and on every file added
-# from now on. These 20 predate the formatter; reformatting them is a source
+# from now on. These predate the formatter; reformatting them is a source
 # change task 0.8 does not own. Task 0.15 runs `make fmt` once and deletes this
-# block. Counts and list measured 2026-09-18.
+# block. List measured 2026-09-18.
+#
+# Task 2.3 removed two entries by rewriting the files rather than by exempting
+# them: `src/app/globals.css`, and `src/components/WorkstationShell.tsx`, which
+# no longer exists. Everything left belongs to a task that has not run yet.
 next.config.js
 tsconfig.json
-src/app/globals.css
 src/components/ChatPanel.tsx
 src/components/EmptyState.tsx
 src/components/EvaluationPanel.tsx
@@ -20,7 +23,6 @@ src/components/GenerationPanel.tsx
 src/components/MasterResumePanel.tsx
 src/components/PdfPreview.tsx
 src/components/ResumeListPanel.tsx
-src/components/WorkstationShell.tsx
 src/components/ui/Button.tsx
 src/components/ui/ConfirmButton.tsx
 src/lib/api.ts
@@ -28,6 +30,3 @@ src/lib/sse.ts
 src/lib/types.ts
 src/__tests__/MasterResumePanel.test.tsx
 src/__tests__/ResumeListPanel.test.tsx
-# These two were added by task 0.1 while 0.8 was in flight. They are on this
-# list only so the gate can go green in the same commit that introduces it;
-# they are new code and should be the first entries removed.
