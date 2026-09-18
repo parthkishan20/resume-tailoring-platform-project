@@ -333,7 +333,7 @@ addopts = [
     "--cov=resumetailor",
     "--cov-report=term-missing:skip-covered",
     "--cov-report=xml",
-    "--cov-fail-under=79",
+    "--cov-fail-under=90",
 ]
 xfail_strict = true
 filterwarnings = ["default"]
@@ -349,13 +349,20 @@ source = ["resumetailor"]
 [tool.coverage.report]
 precision = 2
 show_missing = true
-# MEASURED, NOT ASPIRATIONAL. The suite covers 79.68% of `src/resumetailor/`
-# (89 tests, 989 statements, 201 uncovered). The floor is set one point below
-# that so the gate fails on a regression and not on rounding.
-# AGENTS.md section 8 requires 85% on `domain/`, `services/` and `db/`.
-# Those packages do not exist yet. Task 3.6 creates them and raises this
-# number; raising it here would only produce a build that cannot go green.
-fail_under = 79
+# MEASURED, NOT ASPIRATIONAL. Task 0.8 set this floor at 79%, one point below
+# the level then measured (79.68%, 89 tests, 989 statements), with a note that
+# `domain/` and `db/` did not exist yet and task 3.6 would raise this number
+# once they did. Waves 1-2 created both (`domain/` in task 2.5, `db/` in task
+# 1.2): AGENTS.md section 8's 85% floor on `domain/`, `services/` and `db/` is
+# already cleared without any change here — `domain/` is 100.00% covered,
+# `db/` (including `db/repositories/`) is 94-100% per module, nothing in
+# either package is below 85%. `services/` was never created as a physical
+# package; the business-logic remit AGENTS.md assigns it lives in `domain/`
+# instead, per the `backend-domain` role's own file ownership. Raised to 90,
+# ten points below the measured 94.24% (339 tests, 2154 statements) so the
+# gate still fails on a real regression rather than on rounding, without
+# pinning every future PR to today's exact number.
+fail_under = 90
 exclude_also = [
     "if TYPE_CHECKING:",
     "raise NotImplementedError",
