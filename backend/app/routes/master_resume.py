@@ -73,6 +73,7 @@ RULES:
 - dates must be YYYY-MM (e.g. "2023-01"). Use "present" for current roles.
 - highlights must be a list of strings, one bullet per line.
 - Omit optional fields (url, website, certifications) when not in source.
+- Omit phone entirely if no phone number appears in the source — never invent one.
 """
 
 

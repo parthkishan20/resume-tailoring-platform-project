@@ -12,6 +12,7 @@ rendercv schema summary:
   (design is stripped from output — provided externally via --design CLI flag)
 """
 from __future__ import annotations
+import copy
 import logging
 import re
 from typing import Any
@@ -19,6 +20,26 @@ from typing import Any
 import yaml
 
 logger = logging.getLogger(__name__)
+
+# cv-level keys accepted by rendercv's Cv model (anything else fails validation
+# with "This field is unknown for this object").
+_CV_ALLOWED_KEYS = {
+    "name", "headline", "location", "email", "photo", "phone", "website",
+    "social_networks", "custom_connections", "sections",
+}
+
+# Networks accepted by rendercv's SocialNetwork model, keyed for
+# case/spacing-insensitive lookup.
+_VALID_NETWORKS = {
+    n.lower().replace(" ", ""): n
+    for n in (
+        "LinkedIn", "GitHub", "GitLab", "IMDB", "Instagram", "ORCID",
+        "Mastodon", "StackOverflow", "ResearchGate", "YouTube",
+        "Google Scholar", "Telegram", "WhatsApp", "Leetcode", "X",
+        "Bluesky", "Reddit",
+    )
+}
+_NETWORK_ALIASES = {"twitter": "X", "googlescholar": "Google Scholar"}
 
 
 _MONTH_MAP = {
@@ -59,12 +80,25 @@ def _parse_date(raw: str) -> str:
 
 
 def _normalize_phone(raw: str) -> str | None:
-    """Try to convert a phone number to +1-XXX-XXX-XXXX. Returns None if ambiguous."""
-    digits = re.sub(r"\D", "", raw)
-    if len(digits) == 10:
-        return f"+1-{digits[:3]}-{digits[3:6]}-{digits[6:]}"
-    if len(digits) == 11 and digits[0] == "1":
-        return f"+1-{digits[1:4]}-{digits[4:7]}-{digits[7:]}"
+    """Normalise to E.164 if the number is real; None if rendercv would reject it.
+
+    rendercv validates phones semantically with the phonenumbers library, so
+    format-only fixes are not enough — placeholders like 555-000-0000 must be
+    dropped rather than fail the whole render.
+    """
+    import phonenumbers  # noqa: PLC0415 — only needed when a phone is present
+
+    s = raw.strip()
+    for region in (None, "US"):
+        try:
+            parsed = phonenumbers.parse(s, region)
+        except phonenumbers.NumberParseException:
+            continue
+        if phonenumbers.is_valid_number(parsed):
+            return phonenumbers.format_number(
+                parsed, phonenumbers.PhoneNumberFormat.E164
+            )
+    logger.warning("dropping phone rendercv would reject: %r", raw)
     return None
 
 
@@ -72,6 +106,69 @@ def _normalize_url(raw: str) -> str:
     if raw and not re.match(r"^https?://", raw):
         return f"https://{raw}"
     return raw
+
+
+_DATE_KEY_RE = re.compile(r"^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?$")
+
+
+def _date_sort_key(value: Any) -> tuple[int, int, int] | None:
+    m = _DATE_KEY_RE.match(str(value).strip())
+    if not m:
+        return None
+    return (int(m.group(1)), int(m.group(2) or 0), int(m.group(3) or 0))
+
+
+def _fix_date_order(entry: dict[str, Any]) -> None:
+    """Swap start/end when reversed — rendercv rejects start_date > end_date."""
+    start = _date_sort_key(entry.get("start_date"))
+    end = _date_sort_key(entry.get("end_date"))
+    if start and end and start > end:
+        entry["start_date"], entry["end_date"] = entry["end_date"], entry["start_date"]
+
+
+def _clean_highlights(entry: dict[str, Any]) -> None:
+    """Drop null/blank highlights — rendercv requires each to be a string."""
+    highlights = entry.get("highlights")
+    if isinstance(highlights, list):
+        cleaned = [str(h) for h in highlights if h is not None and str(h).strip()]
+        if cleaned:
+            entry["highlights"] = cleaned
+        else:
+            entry.pop("highlights")
+
+
+def _social_username(network: str, raw: str) -> str:
+    """Strip URL decoration: 'https://linkedin.com/in/jane/' → 'jane'."""
+    u = str(raw).strip().strip("/")
+    if re.match(r"^(https?://|www\.)", u) or "/" in u:
+        segments = [s for s in u.split("/") if s]
+        u = segments[-1] if segments else ""
+    return u
+
+
+def _normalize_social_networks(cv: dict[str, Any]) -> None:
+    raw_networks = cv.get("social_networks")
+    if not isinstance(raw_networks, list):
+        if raw_networks is not None:
+            cv.pop("social_networks", None)
+        return
+    out = []
+    for s in raw_networks:
+        if not isinstance(s, dict):
+            continue
+        key = str(s.get("network", "")).lower().replace(" ", "")
+        network = _NETWORK_ALIASES.get(key) or _VALID_NETWORKS.get(key)
+        if not network:
+            logger.warning("dropping social network rendercv rejects: %r", s)
+            continue
+        username = _social_username(network, s.get("username", ""))
+        if not username:
+            continue
+        out.append({"network": network, "username": username})
+    if out:
+        cv["social_networks"] = out
+    else:
+        cv.pop("social_networks", None)
 
 
 def _split_degree(raw: str) -> tuple[str, str]:
@@ -128,6 +225,9 @@ def _normalize_education(entries: list[Any]) -> list[dict]:
             e["degree"] = short
             if area:
                 e["area"] = area
+        # rendercv requires `area` on EducationEntry — fall back to degree text
+        if not e.get("area") and e.get("degree"):
+            e["area"] = str(e.pop("degree"))
         highlights: list[str] = e.setdefault("highlights", [])
         for gpa_key in ("gpa", "cgpa"):
             if gpa_key in e:
@@ -236,6 +336,76 @@ def _normalize_skills(entries: list[Any]) -> list[dict]:
     return entries
 
 
+def _prune_path(data: dict[str, Any], loc: tuple[str, ...]) -> bool:
+    """Remove the value at a rendercv error location like ('cv', 'sections',
+    'experience', '0', 'highlights', '1'). Returns True if something was removed."""
+    node: Any = data
+    for part in loc[:-1]:
+        if isinstance(node, list):
+            if not str(part).isdigit() or int(part) >= len(node):
+                return False
+            node = node[int(part)]
+        elif isinstance(node, dict):
+            if part not in node:
+                return False
+            node = node[part]
+        else:
+            return False
+    last = loc[-1]
+    if isinstance(node, list) and str(last).isdigit() and int(last) < len(node):
+        del node[int(last)]
+        return True
+    if isinstance(node, dict) and last in node:
+        del node[last]
+        return True
+    return False
+
+
+def _loc_sort_key(loc: tuple[str, ...]) -> tuple:
+    return tuple(int(p) if str(p).isdigit() else p for p in loc)
+
+
+def _validate_and_repair(data: dict[str, Any]) -> None:
+    """Backstop: validate against rendercv's own schema and prune anything that
+    still fails, so unforeseen LLM output degrades gracefully instead of
+    failing the whole render. Mutates `data` in place."""
+    try:
+        from rendercv.exception import RenderCVUserValidationError  # noqa: PLC0415
+        from rendercv.schema.rendercv_model_builder import (  # noqa: PLC0415
+            build_rendercv_model_from_commented_map,
+        )
+    except Exception:  # rendercv not importable — let the CLI report errors
+        return
+    for _ in range(5):
+        probe = copy.deepcopy(data)
+        probe["design"] = {"theme": "classic"}
+        try:
+            build_rendercv_model_from_commented_map(probe)
+            return
+        except RenderCVUserValidationError as exc:
+            # Deepest paths first so per-entry errors are pruned before their
+            # parent section, and higher list indices before lower ones.
+            locations = sorted(
+                {tuple(e.schema_location) for e in exc.validation_errors},
+                key=lambda loc: (len(loc), _loc_sort_key(loc)),
+                reverse=True,
+            )
+            pruned: list[tuple[str, ...]] = []
+            changed = False
+            for loc in locations:
+                if any(p[: len(loc)] == loc for p in pruned):
+                    continue  # a descendant was already pruned this round
+                if _prune_path(data, loc):
+                    logger.warning("pruned %s to satisfy rendercv schema", loc)
+                    pruned.append(loc)
+                    changed = True
+            if not changed:
+                return
+        except Exception:
+            logger.exception("rendercv schema validation backstop failed")
+            return
+
+
 def normalize_to_rendercv(yaml_content: str) -> str:
     """Convert any LLM-generated resume YAML to a valid rendercv document."""
     try:
@@ -280,17 +450,20 @@ def normalize_to_rendercv(yaml_content: str) -> str:
         if not socials:
             cv.pop("social_networks", None)
 
-    # Normalise phone to E.164 (rendercv validates format)
+    # Normalise phone to E.164 (rendercv validates real numbers, not just format)
     if "phone" in cv:
         fixed_phone = _normalize_phone(str(cv["phone"]))
         if fixed_phone:
             cv["phone"] = fixed_phone
         else:
-            cv.pop("phone")  # drop if we can't produce a valid format
+            cv.pop("phone")
 
     # Normalise website to a full URL (rendercv requires a scheme)
     if "website" in cv:
         cv["website"] = _normalize_url(str(cv["website"]))
+
+    # Canonicalise networks and strip URL decoration from usernames
+    _normalize_social_networks(cv)
 
     # 3. Move known section keys under cv.sections
     sections: dict[str, Any] = cv.setdefault("sections", {})
@@ -299,6 +472,26 @@ def normalize_to_rendercv(yaml_content: str) -> str:
             val = cv.pop(key)
             if key not in sections and val:
                 sections[key] = val
+
+    # LLMs emit label/title for a tagline — rendercv calls it headline
+    for alias in ("label", "title"):
+        if alias in cv and "headline" not in cv and isinstance(cv[alias], str):
+            cv["headline"] = cv.pop(alias)
+    # Drop anything rendercv's Cv model doesn't accept ("field is unknown")
+    for key in list(cv):
+        if key not in _CV_ALLOWED_KEYS:
+            logger.warning("dropping unknown cv key rendercv rejects: %r", key)
+            cv.pop(key)
+
+    # Every section must be a list: drop nulls, wrap scalars
+    for key in list(sections):
+        val = sections[key]
+        if val is None:
+            del sections[key]
+        elif isinstance(val, str):
+            sections[key] = [val]
+        elif not isinstance(val, list):
+            del sections[key]
 
     # 4. Normalize section entries
     if "experience" in sections:
@@ -312,7 +505,17 @@ def normalize_to_rendercv(yaml_content: str) -> str:
     if "certifications" in sections:
         sections["certifications"] = _normalize_certifications(sections["certifications"])
 
+    # Generic entry cleanup for every section
+    for entries in sections.values():
+        for entry in entries:
+            if isinstance(entry, dict):
+                _clean_highlights(entry)
+                _fix_date_order(entry)
+
     if not sections:
         cv.pop("sections", None)
+
+    # 5. Backstop: prune anything rendercv's schema still rejects
+    _validate_and_repair(data)
 
     return yaml.dump(data, default_flow_style=False, allow_unicode=True, sort_keys=False)
