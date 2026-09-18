@@ -21,7 +21,7 @@ FE  := $(NPM) --prefix $(FRONTEND) run
 .PHONY: help install check secrets lint fmt fmt-check typecheck test \
         lint-backend lint-frontend fmt-backend fmt-frontend \
         typecheck-backend typecheck-frontend test-backend test-frontend \
-        hooks dev build clean
+        hooks dev dev-hot build clean backup restore migrate
 
 ## ---------------------------------------------------------------------------
 ## Everything
@@ -126,8 +126,11 @@ hooks:  ## Install the pre-commit, pre-push and commit-msg hooks
 	@cd $(BACKEND) && $(UV) run -- pre-commit install \
 		--config ../.pre-commit-config.yaml --install-hooks
 
-dev:  ## Run the dev stack (backend on :8000, frontend on :3000)
+dev:  ## Run the production-shaped image locally (docker compose up --build)
 	docker compose up --build
+
+dev-hot:  ## Run the backend with live reload against a bind-mounted src/ (profile "dev"; see docker-compose.yml)
+	docker compose --profile dev up --build dev
 
 build:  ## Build the production image
 	docker compose build
@@ -137,3 +140,16 @@ clean:  ## Remove caches and build output
 	rm -rf $(BACKEND)/.coverage $(BACKEND)/coverage.xml $(BACKEND)/htmlcov
 	rm -rf $(FRONTEND)/.next $(FRONTEND)/out $(FRONTEND)/tsconfig.tsbuildinfo
 	find . -name __pycache__ -type d -prune -exec rm -rf {} +
+
+## ---------------------------------------------------------------------------
+## Data: backup, restore, migrate (D-03, D-02 — scripts/*.sh, db/migrate.py)
+## ---------------------------------------------------------------------------
+
+backup:  ## Back up the database and PDFs (scripts/backup.sh; ARGS="--local"/"--docker"/"--out DIR"/"--keep N")
+	@./scripts/backup.sh $(ARGS)
+
+restore:  ## Restore a backup (scripts/restore.sh; usage: make restore ARGS="backups/<timestamp> --force")
+	@./scripts/restore.sh $(ARGS)
+
+migrate:  ## Apply pending database migrations (scripts/migrate.sh; ARGS="--docker" to target the running compose service)
+	@./scripts/migrate.sh $(ARGS)

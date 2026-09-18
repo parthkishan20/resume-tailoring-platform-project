@@ -31,16 +31,14 @@ from resumetailor.core.errors import ConfigurationError
 # ── Filesystem layout ────────────────────────────────────────────────────────
 #
 # <BACKEND_ROOT>/
-#   db/schema.sql          the SQLite bootstrap script (task 1.2 replaces it
-#                          with backend/migrations/)
-#   rendercv_config/       design.yaml, locale.yaml, settings.yaml
-#   static/                the Next.js export, mounted at / by main.py
-#   src/resumetailor/      this package
+#   migrations/             numbered SQL migrations (resumetailor.db.migrate)
+#   rendercv_config/         design.yaml, locale.yaml, settings.yaml
+#   static/                  the Next.js export, mounted at / by main.py
+#   src/resumetailor/        this package
 PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 BACKEND_ROOT = PACKAGE_ROOT.parents[1]
 
 RENDERCV_CONFIG_DIR = BACKEND_ROOT / "rendercv_config"
-SCHEMA_SQL_PATH = BACKEND_ROOT / "db" / "schema.sql"
 STATIC_DIR = BACKEND_ROOT / "static"
 
 

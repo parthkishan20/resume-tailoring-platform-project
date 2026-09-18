@@ -1,4 +1,19 @@
 # docker-compose.yml
+#
+# Two services, one profile boundary (task 3.4):
+#
+#   `app`  — no `profiles:` key, so it is always included. This is the
+#            existing, documented `docker compose up --build` workflow and
+#            stays that way: a plain command with no flags still runs it.
+#   `dev`  — `profiles: ["dev"]`, so it only runs when asked for explicitly
+#            (`make dev-hot`, or `docker compose --profile dev up dev`). Bind
+#            mounts `backend/src` over the image's copy and runs uvicorn
+#            with `--reload`, for iterating on the backend without a rebuild
+#            per change. It reuses `app`'s image and named volumes rather
+#            than declaring its own: the two are never meant to run at the
+#            same time (both bind host port 8000), so there is no state to
+#            keep apart, unlike the fully-isolated e2e stack in
+#            docker-compose.test.yml.
 services:
   app:
     build: .
@@ -32,6 +47,44 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+
+  dev:
+    profiles: ["dev"]
+    build: .
+    image: resumetailor
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - resumedb-data:/app/db
+      - resumepdf-data:/app/pdfs
+      # The image's `src/` is an editable install (D-65): overlaying the host
+      # tree on top of it is all `--reload` needs to pick up an edit, with no
+      # rebuild and no re-`uv sync`. Read-only: the container writes nothing
+      # under /app/backend, only under the two volumes above and /tmp.
+      - ./backend/src:/app/backend/src:ro
+    tmpfs:
+      - /tmp
+    env_file:
+      - .env
+    # Overrides CMD only; ENTRYPOINT (tini) is the Dockerfile's, unchanged, so
+    # this still starts under a real init process (D-51).
+    command:
+      - uvicorn
+      - resumetailor.main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --reload
+      - --reload-dir
+      - /app/backend/src
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
 volumes:
   resumedb-data:

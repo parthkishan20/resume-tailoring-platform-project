@@ -1,3 +1,7 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
 [project]
 name = "resumetailor-backend"
 version = "0.1.0"
@@ -31,7 +35,23 @@ dev = [
     # Shuffles test order on every run so an order-dependent test cannot hide
     # again the way D-37 did. Closes B-05, raised by task 0.10.
     "pytest-randomly==5.0.0",
+    # D-63: dependency vulnerability scanning. Audits the environment's
+    # installed distributions against the PyPA advisory database (OSV);
+    # wired into CI as `make audit`, not into `make check` (needs network).
+    "pip-audit==2.9.0",
 ]
+
+# ---------------------------------------------------------------------------
+# Packaging — `[build-system]`
+# ---------------------------------------------------------------------------
+
+[tool.hatch.build.targets.wheel]
+# `resumetailor-backend` (the distribution name, with a hyphen and a suffix
+# hatchling would otherwise normalize to `resumetailor_backend`) does not
+# match the importable package name `resumetailor`. Src-layout autodetection
+# only works when those names agree, so the package directory is named
+# explicitly (D-65).
+packages = ["src/resumetailor"]
 
 # ---------------------------------------------------------------------------
 # Lint and format — `make lint` / `make fmt`
@@ -230,8 +250,10 @@ exclude = [
 [tool.mypy]
 python_version = "3.12"
 files = ["src/resumetailor"]
-# src-layout: the package is not installed (uv.lock declares this project
-# `virtual`), so mypy is told where to find it, the same way pytest is below.
+# src-layout: mypy analyzes source files directly rather than the installed
+# package, so it still needs `src/` named explicitly even though the package
+# is now a real installable distribution (D-65) and no longer needs the
+# `pythonpath`/`PYTHONPATH` workaround pytest and the Dockerfile used to.
 mypy_path = "src"
 explicit_package_bases = true
 strict = true
@@ -260,41 +282,27 @@ ignore_missing_imports = true
 # Every other strict check, including the four real findings pinned below,
 # stays on. Task 0.14 clears these.
 #
-# `resumetailor.adapters` and `resumetailor.deps` are absent from this list and
-# carry the same three codes in their own blocks below: mypy refuses two
-# overrides that name the same module exactly, and those two also pin a real
-# finding. A glob and an exact name may coexist, which is why
-# `resumetailor.api.routers.*` can stay here alongside the `...routers.resumes`
-# pin below.
+# `resumetailor.deps` is absent from this list and carries the same three
+# codes in its own block below: mypy refuses two overrides that name the same
+# module exactly, and that one also pins a real finding. A glob and an exact
+# name may coexist, which is why `resumetailor.api.routers.*` can stay here
+# alongside the `...routers.resumes` pin below.
+#
+# `resumetailor.database`, `resumetailor.simulator`, `resumetailor.yaml_utils`
+# and the former `resumetailor.adapters` block (D-59, folded into
+# `resumetailor.llm.litellm_adapter` when task 2.1 rewrote it clean) were
+# removed from here in task 3.4: none of those modules exist any more, and
+# mypy's own `unused section(s)` note is what caught it.
 module = [
     "resumetailor.backend_api",
-    "resumetailor.database",
     "resumetailor.prompts",
-    "resumetailor.simulator",
-    "resumetailor.yaml_utils",
     "resumetailor.api.routers.*",
 ]
 disable_error_code = ["type-arg", "no-untyped-def", "no-untyped-call"]
 
-# The remaining four are genuine and each is already a registered defect.
+# The remaining three are genuine and each is already a registered defect.
 # They are pinned to one module and one error code so that the same class of
 # bug in any other module still fails the build.
-[[tool.mypy.overrides]]
-# D-59: provider `content` is `str | None` on a refusal and flows into a
-# function declared to return `str`. Also a pymupdf stub gap: `Document` is
-# iterable at runtime but the shipped stub does not say so.
-# `no-any-return` and `attr-defined` are the real findings; the three that
-# follow them are the same annotation debt as the block above, and go with it
-# when task 0.14 runs.
-module = ["resumetailor.adapters"]
-disable_error_code = [
-    "no-any-return",
-    "attr-defined",
-    "type-arg",
-    "no-untyped-def",
-    "no-untyped-call",
-]
-
 [[tool.mypy.overrides]]
 # `SimulatedBackendAPI` does not structurally satisfy the `BackendAPI` port.
 # Real; fixed when the port boundary is rebuilt in task 1.3. `return-value` is
@@ -320,12 +328,10 @@ disable_error_code = ["arg-type"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# src-layout. `resumetailor` lives under `src/`; `tests.helpers` is imported by
-# name from `tests/conftest.py`, so `.` stays on the path too. The project is
-# `virtual` in uv.lock (uv installs the dependency tree but not this package),
-# so neither entry can be dropped until that changes — which means regenerating
-# uv.lock and reordering the Dockerfile's dependency layer. See the 1.1 report.
-pythonpath = ["src", "."]
+# `resumetailor` is now a real installed (editable) distribution (D-65), so it
+# no longer needs `src` on `pythonpath`. `tests/__init__.py` makes `tests` a
+# package, which is enough for pytest's own rootdir insertion to put `backend/`
+# on `sys.path` for `tests.helpers` without any entry here either.
 addopts = [
     "--strict-markers",
     "--strict-config",

@@ -65,6 +65,14 @@ backend/**/__pycache__/
 
 # Database (runtime file, not committed)
 db/resumedb.db
+# `db/resumedb.db` above is anchored to the repo root (a `/`-containing
+# pattern is, per gitignore's own rules) and never matched the real default
+# local path `backend/db/resumedb.db` that backup.sh, restore.sh and
+# migrate.sh all use — confirmed with `git check-ignore`. Anchored the same
+# way, to `backend/db/` specifically: `db/` alone (no other separator) would
+# be unanchored and also match the tracked `backend/src/resumetailor/db/`
+# package, silently ignoring any new source file added under it.
+/backend/db/
 
 # Generated PDFs (runtime, not committed)
 pdfs/
