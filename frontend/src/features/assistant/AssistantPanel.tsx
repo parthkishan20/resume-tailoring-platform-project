@@ -3,38 +3,34 @@
 import * as React from "react";
 import { Eraser } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
-import ChatPanel from "@/components/ChatPanel";
 import { AlertDialog, AlertDialogContent, AlertDialogTrigger, IconButton } from "@/design-system";
 import { queryKeys } from "@/features/queries";
 import { api } from "@/lib/api";
 import type { MasterResume } from "@/lib/types";
+import { Chat } from "./Chat";
 
 /**
  * Assistant (DESIGN-SYSTEM.md 3.2): chat, docked rather than overlaying, so
  * the user can watch the document change while the assistant edits it.
  *
- * `ChatPanel` is re-hosted verbatim. It was already a 380px vertical column,
- * which is exactly the inspector's shape, so nothing about it needed to move;
- * what is gone is `ChatDrawer`, the 48-line wrapper that made chat look like a
- * fourth destination and overlaid the work it was editing (defect 8 in the
- * spec's section 1 table, P1-20 in the audit).
+ * `Chat` replaces the re-hosted `components/ChatPanel.tsx` 2.3 kept in place
+ * to keep the assistant reachable: real chat pagination (D-21's frontend
+ * half), the typed `streamChat` reader instead of a cast `readSseStream`
+ * call, and the D-33 tool-call seam all belong here, not in a 20-line
+ * pass-through. `components/ChatPanel.tsx` and its test are now unreferenced;
+ * PLAN.md's 3.2 entry notes them for a follow-up deletion pass, the same
+ * cleanup 3.1 is doing for the panels it supersedes.
  *
- * Its two pieces of surrounding behaviour come with it and are improved in
- * passing: the clear action is now a real `AlertDialog` rather than a bare
- * icon that wipes the conversation on one click, and "master resume updated"
- * writes through the query cache instead of a prop callback that the old shell
- * had to thread two levels down.
+ * `masterResume` is accepted, not used: `Chat` invalidates
+ * `queryKeys.masterResume` through its own `QueryClient` handle when a tool
+ * call reports one, which is the same cache every mounted `useMasterResume`
+ * reads from, so no prop needs to carry the refreshed document back up.
+ * Kept as a parameter because `Inspector.tsx` (not this task's file) still
+ * passes it.
  */
-export function AssistantPanel({ masterResume }: { masterResume: MasterResume }) {
+export function AssistantPanel({ masterResume: _masterResume }: { masterResume: MasterResume }) {
   const queryClient = useQueryClient();
   const [chatEpoch, setChatEpoch] = React.useState(0);
-
-  const handleAction = React.useCallback(
-    (updated: MasterResume) => {
-      queryClient.setQueryData(queryKeys.masterResume, updated);
-    },
-    [queryClient],
-  );
 
   async function clearConversation() {
     try {
@@ -69,7 +65,7 @@ export function AssistantPanel({ masterResume }: { masterResume: MasterResume })
         </AlertDialog>
       </div>
       <div className="min-h-0 flex-1">
-        <ChatPanel key={chatEpoch} masterResume={masterResume} onAction={handleAction} />
+        <Chat key={chatEpoch} />
       </div>
     </div>
   );
