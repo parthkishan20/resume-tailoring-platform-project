@@ -22,20 +22,13 @@ RUN npm run build
 # ── Stage 2: Python runtime ──────────────────────────────────────────────────
 FROM python:3.12-slim
 
-# PYTHONPATH: src-layout. `resumetailor-backend` is a virtual project in
-# uv.lock, so uv installs the dependency tree but not this package, and `src/`
-# has to be on the path for `resumetailor.main` to import. Mirrors `pythonpath`
-# in [tool.pytest.ini_options].
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONPATH=/app/backend/src
+    PYTHONDONTWRITEBYTECODE=1
 
 # PATH: the virtualenv `uv sync` builds below, so uvicorn and rendercv are
 # invoked directly rather than through `uv run`. Required by `USER app` at the
 # end of this file: `uv run` re-syncs the environment on every start, which
-# needs write access to a root-owned .venv and to uv's cache. It also makes
-# uvicorn PID 1, so it receives SIGTERM itself rather than through a parent
-# that does not forward it.
+# needs write access to a root-owned .venv and to uv's cache.
 #
 # HOME: set explicitly because Docker does not read the home directory out of
 # /etc/passwd for `USER`, and fontconfig — which Typst resolves fonts through —
@@ -43,6 +36,19 @@ ENV PYTHONUNBUFFERED=1 \
 # RenderError message.
 ENV PATH=/app/backend/.venv/bin:$PATH \
     HOME=/home/app
+
+# tini (D-51): a real init process. `docker stop` sends SIGTERM to PID 1;
+# uvicorn installs its own SIGTERM handler and would eventually get there
+# directly, but as PID 1 it inherits none of the kernel's default signal
+# dispositions and reaps none of its own orphans -- a killed `rendercv`/Typst
+# child (D-50's subprocess) becomes a zombie only PID 1 can reap. tini does
+# both: forwards signals to the whole process group and reaps zombies. It is
+# the one apt package this image installs; everything else stays wheel- or
+# digest-pinned copies, but tini has no equivalent static-binary release
+# artifact worth trusting over Debian's own package.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends tini \
+ && rm -rf /var/lib/apt/lists/*
 
 # D-50. LLM-authored YAML is handed to a document renderer: rendering/runner.py
 # writes model output to a YAML file and spawns `rendercv render` on it, and
@@ -67,17 +73,32 @@ COPY --from=ghcr.io/astral-sh/uv:0.11.11@sha256:798712e57f879c5393777cbda2bb309b
 WORKDIR /app/backend
 
 # Dependency layer: manifests only, so editing backend source does not force a
-# re-resolve of the ~80-package tree. `resumetailor-backend` is a virtual
-# project in uv.lock (`source = { virtual = "." }`), so uv sync needs no source.
-# rendercv[full] ships Typst as a pip wheel — no apt-get layer, no TeX Live.
+# re-resolve of the ~80-package tree. `--no-install-project` is what makes
+# this cacheable: `resumetailor-backend` is now a real (editable) distribution
+# in uv.lock rather than a `virtual` one (D-65), so a plain `uv sync` here
+# would need `src/`, which has not been copied in yet, and would fail. This
+# installs every dependency and nothing of the project itself; the second
+# `uv sync` below, after `src/` lands, installs the project in one cheap step
+# on top of an already-populated venv.
+# rendercv[full] ships Typst as a pip wheel, so this dependency layer itself
+# stays apt-get-free; the one apt package in this image is tini, above.
 COPY backend/pyproject.toml backend/uv.lock ./
-RUN uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev --no-install-project
 
 # Application source, named individually so the host's conda/darwin
 # `backend/.venv` cannot ride along (PLAN.md D-36).
+#
+# `migrations/` is not optional: `resumetailor.db.migrate` reads it from
+# `BACKEND_ROOT / "migrations"` at every boot, and an empty (missing)
+# directory is not an error there — `discover()` just returns no migrations,
+# so the lifespan logs "database schema ready" over a database with no
+# tables at all and then fails one line later in `seed_defaults`. This was
+# missing before task 3.4: no prior task had a Docker daemon to actually run
+# the built image and catch it (D-72).
 COPY backend/src ./src
-COPY backend/db ./db
+COPY backend/migrations ./migrations
 COPY backend/rendercv_config ./rendercv_config
+RUN uv sync --frozen --no-dev
 
 # Frontend static export, served by FastAPI at / (the static mount at the end of
 # `create_app`, which resolves `STATIC_DIR` to /app/backend/static).
@@ -98,6 +119,11 @@ EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')" || exit 1
+
+# tini is PID 1 (D-51); `--` stops it from parsing CMD's own arguments as its
+# own. `docker-compose.yml`'s `dev` profile overrides `command:` alone to add
+# `--reload`, so it still starts under tini rather than becoming PID 1 itself.
+ENTRYPOINT ["tini", "--"]
 
 # `--host 0.0.0.0` is correct and must stay: the Docker bridge cannot reach a
 # process bound to the container's loopback. What restricts access is the
