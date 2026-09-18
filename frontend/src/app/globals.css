@@ -1,7 +1,7 @@
 /*
- * Letterpress tokens (docs/design/DESIGN-SYSTEM.md 2.1-2.7). Namespaced
- * `--lp-*`, so nothing below is overridden. Must stay the first rule in the
- * file: CSS @import has to precede everything but @charset and @layer.
+ * Letterpress tokens (docs/design/DESIGN-SYSTEM.md 2.1-2.7). Must stay the
+ * first rule in the file: CSS @import has to precede everything but @charset
+ * and @layer.
  */
 @import "../design-system/tokens.css";
 
@@ -10,96 +10,142 @@
 @tailwind utilities;
 
 /*
- * DEPRECATED - the "tailor's thread" palette.
+ * COMPATIBILITY ALIASES, not a palette.
  *
- * Every token in this :root block is read by the ten components under
- * src/components/. Task 2.3 (`frontend-shell`) rewrites those components onto
- * the Letterpress tokens above and is the owner that deletes this block, the
- * `.seam-dashed` rule, the CodeMirror !important overrides (replaced by the
- * official theming API, DESIGN-SYSTEM.md section 6), and the matching
- * unprefixed keys in tailwind.config.ts. Do not delete it before then: the
- * build fails and ten components lose their palette.
+ * Task 1.4 left the "tailor's thread" palette here as thirty hex literals and
+ * named task 2.3 as the owner that deletes them. Deleting them outright is not
+ * available to 2.3: four components that 2.3 must not edit still compile
+ * against these names (`ChatPanel`, `ResumeListPanel`, `PdfPreview` and the
+ * `components/ui/*` controls they use), and so do the unprefixed keys in
+ * `tailwind.config.ts`.
+ *
+ * So every name survives and every value is gone. Each one is now a pointer
+ * into the Letterpress ramp, which means the re-hosted panels follow the theme
+ * in both directions for free, the gold accent is off the product entirely,
+ * and no hex literal remains in this file.
+ *
+ * Tasks 3.1 and 3.2 rewrite those panels onto `--lp-*` directly. This block
+ * and the matching `tailwind.config.ts` keys go with them.
  */
 :root {
-  /* Cloth — layered neutral surfaces */
-  --background: #0c0d0f;
-  --surface-1: #141619;
-  --surface-2: #1c1f23;
-  --card: #141619;
-  --popover: #1c1f23;
-  --muted: #1c1f23;
-  --input: #17191d;
-  --border: #26282d;
-  --border-strong: #34373d;
+  /* Surfaces */
+  --background: var(--lp-paper);
+  --surface-1: var(--lp-paper-raised);
+  --surface-2: var(--lp-paper-sunken);
+  --card: var(--lp-paper-raised);
+  --popover: var(--lp-paper-overlay);
+  --muted: var(--lp-paper-sunken);
+  --input: var(--lp-paper-raised);
 
-  /* Thread — the single gold accent */
-  --accent: #d9a84e;
-  --accent-hover: #e5ba69;
-  --accent-foreground: #191204;
-  --accent-dim: rgba(217, 168, 78, 0.12);
+  /* Borders. `--border` points at the 3:1 control rule rather than the
+   * decorative hairline: it is the only boundary identifying the legacy
+   * textareas, and WCAG 1.4.11 wants 3:1 for that (section 5). */
+  --border: var(--lp-rule-control);
+  --border-strong: var(--lp-rule-strong);
+
+  /* Accent. One cobalt, everywhere, per the 2.1 colour lock. */
+  --accent: var(--lp-accent);
+  --accent-hover: var(--lp-accent-hover);
+  --accent-foreground: var(--lp-accent-contrast);
+  --accent-dim: var(--lp-accent-wash);
 
   /* Text */
-  --foreground: #edeef0;
-  --muted-foreground: #8b9099;
-  --faint-foreground: #5c6169;
+  --foreground: var(--lp-ink);
+  --muted-foreground: var(--lp-ink-secondary);
+  --faint-foreground: var(--lp-ink-tertiary);
 
-  /* Primary buttons wear the thread */
-  --primary: #d9a84e;
-  --primary-foreground: #191204;
-  --primary-hover: #e5ba69;
+  /* Primary controls */
+  --primary: var(--lp-accent);
+  --primary-foreground: var(--lp-accent-contrast);
+  --primary-hover: var(--lp-accent-hover);
 
   /* Semantic */
-  --success: #5bd087;
-  --warning: #f59e5b;
-  --error: #f07373;
-  --destructive: #f07373;
+  --success: var(--lp-positive);
+  --warning: var(--lp-caution);
+  --error: var(--lp-critical);
+  --destructive: var(--lp-critical);
 
-  --ring: #d9a84e;
+  --ring: var(--lp-focus-ring);
+
+  /*
+   * Font aliases. `layout.tsx` no longer loads Inter, Fraunces or JetBrains
+   * Mono (2.2 bans the first two by name and section 7 forbids a serif
+   * anywhere), but `tailwind.config.ts`'s deprecated `font-sans`,
+   * `font-display` and `font-mono` keys still resolve through these three
+   * variables and the re-hosted panels still use them. Pointing them at Geist
+   * retires the banned families without editing a component or restructuring
+   * the Tailwind theme.
+   */
+  --font-inter: var(--font-geist-sans);
+  --font-fraunces: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
 }
 
-* { box-sizing: border-box; }
+/*
+ * The whole product is a Letterpress surface now, so `color-scheme` belongs on
+ * the root element rather than scoped to an opt-in attribute. It reads the
+ * token, which flips with `[data-theme]`, which is why `next-themes` runs with
+ * `enableColorScheme={false}`: its own inline style would win over this rule
+ * and there would then be two sources for one value.
+ */
+:root {
+  color-scheme: var(--lp-color-scheme);
+}
+
+* {
+  box-sizing: border-box;
+}
 
 body {
-  background-color: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-inter), sans-serif;
-  min-height: 100vh;
+  background-color: var(--lp-paper);
+  color: var(--lp-ink);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  min-height: 100dvh;
+  margin: 0;
 }
 
 /* Scrollbar */
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: var(--faint-foreground); }
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--lp-rule-strong);
+  border-radius: var(--lp-radius-control);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--lp-ink-tertiary);
+}
 
-/* Visible keyboard focus */
+/* Visible keyboard focus: 2px at 2px offset, both themes, never removed. */
 :focus-visible {
-  outline: 2px solid var(--ring);
+  outline: 2px solid var(--lp-focus-ring);
   outline-offset: 2px;
 }
 
-/* Stitched seam — the signature dashed-gold motif */
+/*
+ * Dashed rule. Carried over because `ResumeListPanel`'s empty state uses it
+ * and that file is task 3.2's, but retinted off the gold onto a neutral
+ * hairline so it stops being an accent surface (2.1 colour lock).
+ */
 .seam-dashed {
   border-style: dashed;
-  border-color: rgba(217, 168, 78, 0.35);
+  border-color: var(--lp-rule-strong);
 }
 
-/* CodeMirror chrome matches the cloth */
-.cm-editor { background: var(--background) !important; height: 100%; }
-.cm-editor .cm-gutters {
-  background: var(--background) !important;
-  border-right: 1px solid var(--border) !important;
-  color: var(--faint-foreground) !important;
-}
-.cm-editor .cm-activeLine { background: rgba(255, 255, 255, 0.03) !important; }
-.cm-editor .cm-activeLineGutter { background: transparent !important; color: var(--muted-foreground) !important; }
-.cm-editor .cm-content { font-family: var(--font-mono), monospace; font-size: 13px; }
-.cm-editor .cm-cursor { border-left-color: var(--accent) !important; }
-.cm-editor .cm-selectionBackground,
-.cm-editor.cm-focused .cm-selectionBackground { background: rgba(217, 168, 78, 0.18) !important; }
+/*
+ * No `.cm-editor` rules here. The editor is themed through CodeMirror's own
+ * theming API in `features/document/editorTheme.ts`, which is what section 6
+ * asks for; the `!important` overrides that used to live here fought it.
+ */
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
@@ -107,22 +153,13 @@ body {
 }
 
 /*
- * The Letterpress preview route (/design) and, after task 2.3, the whole app
- * paint their own ground from the --lp-* tokens. `body` above still carries
- * the legacy dark background for the ten components that have not moved yet,
- * so Letterpress surfaces set their own background explicitly rather than
- * inheriting it.
+ * `[data-lp-surface]` remains for the `/design` route, which pins two
+ * subtrees to opposite themes side by side so both can be checked at once.
+ * The product itself no longer needs it: the root element carries the theme.
  */
 [data-lp-surface] {
   color-scheme: var(--lp-color-scheme);
   background-color: var(--lp-paper);
   color: var(--lp-ink);
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-}
-
-/* Focus, carried forward from the legacy rule above but on the Letterpress
- * ring token so it stays visible in both themes (section 5). */
-[data-lp-surface] :focus-visible {
-  outline: 2px solid var(--lp-focus-ring);
-  outline-offset: 2px;
 }
