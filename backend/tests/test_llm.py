@@ -104,11 +104,24 @@ async def test_litellm_adapter_passes_key_per_call_not_via_environ(monkeypatch):
 
     It used to be set in the constructor, from which every child process —
     including the rendercv subprocess — inherited it.
+
+    The precondition is a *present* sentinel, not an absent key. Deleting the
+    key outright used to be how this test set up its precondition, but that
+    leaves a real gap for anything importing `litellm` for the first time
+    during the test to fill: `litellm/__init__.py` calls
+    `dotenv.load_dotenv(override=False)` at import time, and `load_dotenv`
+    only skips a key that is already *present* in `os.environ` — an absent
+    one gets filled in from whatever `.env` `find_dotenv()` walks up and
+    finds, which in this repo's layout is the real key at the repo root. A
+    present, obviously-fake sentinel closes that gap and is a strictly more
+    direct test of the actual claim: the adapter must never touch this key,
+    whatever value it holds.
     """
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "sentinel-unrelated-to-the-adapter")
     adapter = LiteLLMAdapter(model="openrouter/test/model", api_key="secret-key")
     import os
-    assert "OPENAI_API_KEY" not in os.environ
+
+    assert os.environ["OPENAI_API_KEY"] == "sentinel-unrelated-to-the-adapter"
 
     with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm:
         mock_llm.return_value = MagicMock(
@@ -116,7 +129,7 @@ async def test_litellm_adapter_passes_key_per_call_not_via_environ(monkeypatch):
         )
         await adapter.complete([{"role": "user", "content": "hi"}])
 
-    assert "OPENAI_API_KEY" not in os.environ
+    assert os.environ["OPENAI_API_KEY"] == "sentinel-unrelated-to-the-adapter"
     assert mock_llm.call_args.kwargs["api_key"] == "secret-key"
 
 
