@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { cn } from "@/design-system";
+import { cn } from "./cn";
 
 export type DocumentMode = "editor" | "split" | "preview";
 
@@ -16,12 +16,19 @@ const MODES: { value: DocumentMode; label: string }[] = [
  *
  * DESIGN-SYSTEM.md 1 keeps the segmented control as "the correct control for
  * the job" and 4.1 specifies it on `@radix-ui/react-toggle-group`. Task 1.4
- * shipped 14 of the 18 primitives in 4.1 and this was not one of them, so it
- * is built here, against the tokens, rather than reaching for the legacy
- * `components/ui/SegmentedControl`, whose markup is `role="tablist"` over
- * `role="tab"` with no panel and no keyboard contract (P1-16 in the frontend
- * audit). Promoting this into `design-system/` belongs with whichever task
- * adds `@radix-ui/react-toggle-group`.
+ * shipped 14 of the 18 primitives in 4.1 and this was not one of them, so
+ * task 2.3 built it locally against the tokens instead, rather than reaching
+ * for the legacy `components/ui/SegmentedControl`, whose markup is
+ * `role="tablist"` over `role="tab"` with no panel and no keyboard contract
+ * (P1-16 in the frontend audit).
+ *
+ * Promoted into `design-system/` by task 3.1, unchanged. **Deviation from the
+ * plan text**: the promotion did not also swap the implementation onto
+ * `@radix-ui/react-toggle-group`. The hand-rolled roving-tabindex radio group
+ * below already satisfies the same keyboard and ARIA contract Radix's
+ * primitive would provide, adding the dependency now would touch working,
+ * tested code for no behavioural change, and a Radix rewrite is easy to do
+ * later in this one file without another promotion.
  *
  * Semantics are a radio group, not tabs: these three do not each own a panel,
  * they choose one layout for the same panel. Roving tabindex, so the group is

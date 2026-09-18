@@ -3,7 +3,7 @@
 import * as React from "react";
 import { DownloadSimple } from "@phosphor-icons/react";
 import PdfPreview from "@/components/PdfPreview";
-import { cn } from "@/design-system";
+import { cn } from "./cn";
 
 export interface DocumentFrameProps {
   /** Where the rendered PDF is fetched from. */
@@ -23,11 +23,17 @@ export interface DocumentFrameProps {
  * sheet. The accent is banned inside this frame, per 2.1, so the chrome around
  * the sheet is neutral and nothing here is cobalt.
  *
- * `PdfPreview` is re-hosted unchanged. It owns the fetch-to-blob pipeline and
- * the `<iframe title>` that section 5 requires, and its internals belong to a
- * later task; what was missing was the visible download action beside it,
- * which section 5 also requires and which the old shell only offered on
- * generated resumes.
+ * `PdfPreview` stays where it is, at `components/PdfPreview.tsx`, rather than
+ * moving with this file: `components/ResumeListPanel.tsx` (task 3.2's) also
+ * imports it by relative path, and moving it would be a cross-boundary edit
+ * to a file this task does not own. Task 3.1 did rewrite its *internals* onto
+ * `--lp-*` tokens and the `Skeleton`/`ErrorState` primitives, in place, since
+ * a design-system primitive depending on the old dark-shell palette defeats
+ * the point of promoting this component; its props (`pdfUrl`, `testId`) are
+ * unchanged, so `ResumeListPanel` keeps compiling and gets the same visual
+ * update for free. What was missing structurally, before either change, was
+ * the visible download action beside the preview, which section 5 requires
+ * and which the old shell only offered on generated resumes.
  */
 export function DocumentFrame({ pdfUrl, downloadUrl, name, testId }: DocumentFrameProps) {
   return (

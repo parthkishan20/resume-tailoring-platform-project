@@ -2,93 +2,117 @@
 
 import * as React from "react";
 import { Gauge } from "@phosphor-icons/react";
-import { Button, Chip, EmptyState, ErrorState, Skeleton } from "@/design-system";
+import { Button, Chip, EmptyState, ErrorState, ScoreDial, Skeleton } from "@/design-system";
+import { useResumeDetail } from "@/features/queries";
 import { JobDescriptionField } from "@/features/workspace/JobDescriptionField";
 import { useWorkspace } from "@/features/workspace/WorkspaceContext";
-import { readSseStream } from "@/lib/sse";
-import type { EvaluationResult, MasterResume } from "@/lib/types";
+import { streamEvaluate } from "@/lib/api";
+import type { EvaluationResult } from "@/lib/types";
 
-/**
- * Score bands. Three of them, with text labels, because section 5 forbids
- * communicating the score by colour alone: the numeral and the band name each
- * carry it independently.
- */
-function band(score: number): { label: string; tone: "positive" | "caution" | "critical" } {
-  if (score >= 75) return { label: "Strong match", tone: "positive" };
-  if (score >= 50) return { label: "Partial match", tone: "caution" };
-  return { label: "Weak match", tone: "critical" };
+interface RunState {
+  status: "idle" | "running" | "error" | "success";
+  result: EvaluationResult | null;
+  error: string | null;
 }
 
-const TONE_TEXT = {
-  positive: "text-lp-positive",
-  caution: "text-lp-caution",
-  critical: "text-lp-critical",
-} as const;
+const IDLE: RunState = { status: "idle", result: null, error: null };
 
 /**
  * Evaluate (DESIGN-SYSTEM.md 3.2): the same job description as Tailor, scored
- * against the document in the centre.
+ * against "whatever document is currently in the centre" — not always the
+ * master.
  *
- * ## Where the line between task 2.3 and task 3.1 falls
+ * ## D-45's back half, and D-41
  *
- * As with Tailor, the old 175-line `EvaluationPanel` is a page and cannot be
- * re-hosted in a 380px rail, so the request is reproduced and the result is
- * rendered with the primitives 1.4 shipped.
+ * Task 2.3 could only reproduce the request and the result; the interim panel
+ * scored the master's last *saved* copy regardless of what was open or
+ * edited. `domain/evaluation.py` already accepts arbitrary YAML (2.5), so
+ * closing both defects here is entirely a matter of picking the right
+ * document and reading it live:
  *
- * Two deliberate gaps, both 3.1's:
- *
- * 1. `ScoreDial` is specified in 4.1 and task 1.4 did not ship it, so the
- *    score renders as a tabular numeral over a band label. That satisfies
- *    section 5 but it is not the drawn dial the spec asks for, and building a
- *    design-system primitive is not this task's to do.
- * 2. The document being scored is still the master resume. D-45 (score the
- *    generated resume, not only the master) needs the generated document's
- *    YAML, which means a second fetch and a decision about which document the
- *    centre is showing. That is feature logic and it is 3.1's.
+ * - **Master is open** (`destination === "master"`): `masterYaml` from
+ *   `WorkspaceContext` is the editor's live buffer, already up to the last
+ *   keystroke, no save required — unlike Tailor, this route accepts arbitrary
+ *   YAML, so there is nothing to persist first.
+ * - **A generated resume is open** (`destination === "library"`): its
+ *   `yaml_content` when the caller already has it (a resume just produced by
+ *   Tailor's `done` event carries the full row), otherwise fetched via
+ *   `useResumeDetail`, because `GET /api/resumes` list rows omit it. Nothing
+ *   here can be "live" the way the master's buffer is: task 3.2 owns making
+ *   the Library editable, and until it does, the document's stored content is
+ *   the only copy that exists.
+ * - **Library is open with nothing selected**: nothing to evaluate. A
+ *   dedicated empty state says so rather than silently falling back to the
+ *   master, which would evaluate a document the user cannot see on screen.
  */
-export function EvaluatePanel({ masterResume }: { masterResume: MasterResume }) {
-  const { jobDescription } = useWorkspace();
-  const [result, setResult] = React.useState<EvaluationResult | null>(null);
-  const [status, setStatus] = React.useState<"idle" | "running" | "error">("idle");
-  const [error, setError] = React.useState<string | null>(null);
-  const abortRef = React.useRef<AbortController | null>(null);
+export function EvaluatePanel() {
+  const { jobDescription, destination, masterYaml, selectedResume } = useWorkspace();
 
+  const targetName =
+    destination === "master" ? "the master resume" : (selectedResume?.name ?? null);
+  const detailId =
+    destination === "library" &&
+    selectedResume !== null &&
+    selectedResume.yaml_content === undefined
+      ? selectedResume.id
+      : null;
+  const needsDetail = detailId !== null;
+  const detail = useResumeDetail(detailId);
+
+  const targetYaml =
+    destination === "master"
+      ? masterYaml
+      : (selectedResume?.yaml_content ?? detail.data?.yaml_content ?? null);
+
+  const nothingSelected = destination === "library" && selectedResume === null;
+  const targetLoading = needsDetail && detail.isPending;
+  const targetLoadError = needsDetail && detail.isError ? detail.error.message : null;
+
+  const [run, setRun] = React.useState<RunState>(IDLE);
+  const abortRef = React.useRef<AbortController | null>(null);
   React.useEffect(() => () => abortRef.current?.abort(), []);
 
-  const ready = jobDescription.trim().length > 0;
-  const running = status === "running";
+  // Whatever result is on screen was scored against the *previous* target;
+  // switching documents invalidates it rather than leaving a stale score
+  // attached to a different resume's name.
+  const targetKey = destination === "master" ? "master" : (selectedResume?.id ?? "none");
+  React.useEffect(() => {
+    abortRef.current?.abort();
+    setRun(IDLE);
+  }, [targetKey]);
+
+  const jdReady = jobDescription.trim().length > 0;
+  const ready = jdReady && targetYaml !== null && !targetLoading;
+  const running = run.status === "running";
 
   async function evaluate() {
-    if (running || !ready) return;
+    if (running || !ready || targetYaml === null) return;
 
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
-    setStatus("running");
-    setError(null);
-    setResult(null);
+    setRun({ status: "running", result: null, error: null });
 
     try {
-      for await (const event of readSseStream(
-        "/api/evaluate/stream",
-        { yaml_content: masterResume.yaml_content, job_description: jobDescription },
-        controller.signal,
+      for await (const frame of streamEvaluate(
+        { yaml_content: targetYaml, job_description: jobDescription },
+        { signal: controller.signal },
       )) {
-        if (event.event === "done") {
-          setResult((event.data as { result: EvaluationResult }).result);
-        } else if (event.event === "error") {
-          setError((event.data as { error: string }).error);
-          setStatus("error");
+        if (frame.event === "done") {
+          setRun({ status: "success", result: frame.data.result, error: null });
+        } else if (frame.event === "error") {
+          setRun({ status: "error", result: null, error: frame.data.error });
           return;
         }
       }
     } catch (caught: unknown) {
       if (controller.signal.aborted) return;
-      setError(caught instanceof Error ? caught.message : "Evaluation failed");
-      setStatus("error");
-      return;
+      setRun({
+        status: "error",
+        result: null,
+        error: caught instanceof Error ? caught.message : "Evaluation failed",
+      });
     }
-    setStatus("idle");
   }
 
   return (
@@ -98,6 +122,14 @@ export function EvaluatePanel({ masterResume }: { masterResume: MasterResume }) 
         label="Job description"
         disabled={running}
       />
+
+      {destination === "library" ? (
+        <p className="font-lp-sans text-lp-caption text-lp-ink-tertiary">
+          {nothingSelected
+            ? "Nothing is open in the Library."
+            : `Evaluating ${targetName ?? "this resume"}.`}
+        </p>
+      ) : null}
 
       <Button
         data-testid="evaluate-button"
@@ -109,7 +141,7 @@ export function EvaluatePanel({ masterResume }: { masterResume: MasterResume }) 
         disabled={!ready}
         className="w-full"
       >
-        Evaluate this resume
+        {destination === "master" ? "Evaluate the master resume" : "Evaluate this resume"}
       </Button>
 
       {running ? (
@@ -124,25 +156,41 @@ export function EvaluatePanel({ masterResume }: { masterResume: MasterResume }) 
             <Skeleton shape="text" className="w-2/3" />
           </div>
         </div>
-      ) : status === "error" ? (
+      ) : run.status === "error" ? (
         <ErrorState
           title="The resume was not evaluated"
-          cause={error ?? undefined}
+          cause={run.error ?? undefined}
           action={
             <Button variant="secondary" size="sm" onClick={() => void evaluate()}>
               Try again
             </Button>
           }
         />
-      ) : result ? (
-        <Result result={result} />
+      ) : targetLoadError ? (
+        <ErrorState
+          title="This resume could not be loaded"
+          cause={targetLoadError}
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void detail.refetch()}>
+              Try again
+            </Button>
+          }
+        />
+      ) : run.status === "success" && run.result ? (
+        <Result result={run.result} />
+      ) : nothingSelected ? (
+        <EmptyState
+          icon={<Gauge size={22} />}
+          title="Select a document to evaluate"
+          description="Open the master resume, or choose one from the Library, then come back here."
+        />
       ) : (
         <EmptyState
           icon={<Gauge size={22} />}
-          title={ready ? "Ready to evaluate" : "Paste a job description"}
+          title={jdReady ? "Ready to evaluate" : "Paste a job description"}
           description={
-            ready
-              ? "Scores the master resume against this posting."
+            jdReady
+              ? `Scores ${targetName ?? "the open document"} against this posting.`
               : "Evaluate reports a match score, a critique, and the keywords you are missing."
           }
         />
@@ -152,21 +200,9 @@ export function EvaluatePanel({ masterResume }: { masterResume: MasterResume }) 
 }
 
 function Result({ result }: { result: EvaluationResult }) {
-  const { label, tone } = band(result.match_score);
-
   return (
     <div data-testid="evaluate-result" className="flex flex-col gap-lp-5">
-      <div
-        role="img"
-        aria-label={`Match score ${result.match_score} out of 100. ${label}.`}
-        className="flex items-baseline gap-lp-3"
-      >
-        <span className="font-lp-mono text-lp-display font-semibold tabular-nums text-lp-ink">
-          {result.match_score}
-        </span>
-        <span className="font-lp-sans text-lp-caption text-lp-ink-tertiary">/ 100</span>
-        <span className={`font-lp-sans text-lp-label font-medium ${TONE_TEXT[tone]}`}>{label}</span>
-      </div>
+      <ScoreDial score={result.match_score} />
 
       <p className="max-w-[65ch] font-lp-sans text-lp-body text-lp-ink">{result.critique}</p>
 

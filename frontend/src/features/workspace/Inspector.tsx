@@ -87,7 +87,7 @@ export function Inspector({ masterResume, onEditRules, onCollapse }: InspectorPr
           forceMount
           className="min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden"
         >
-          <EvaluatePanel masterResume={masterResume} />
+          <EvaluatePanel />
         </TabsContent>
         <TabsContent
           value="assistant"

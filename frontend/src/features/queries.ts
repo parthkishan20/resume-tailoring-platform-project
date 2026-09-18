@@ -124,6 +124,24 @@ export function useResumeList(
   });
 }
 
+/**
+ * One generated resume with its `yaml_content` (D-45's back half).
+ *
+ * `GET /api/resumes` never selects `yaml_content` (a list query has no reason
+ * to carry every document's full text), so a row handed to Evaluate by the
+ * library list is missing exactly the field Evaluate needs. Gated on `id`
+ * being non-null and only enabled when the caller does not already hold the
+ * field, so opening a resume straight from a Tailor run (whose `done` event
+ * carries the full row) never causes a redundant fetch.
+ */
+export function useResumeDetail(id: number | null): UseQueryResult<GeneratedResume> {
+  return useQuery({
+    queryKey: queryKeys.resumes.detail(id ?? -1),
+    queryFn: ({ signal }) => api.getResume(id as number, { signal }),
+    enabled: id !== null,
+  });
+}
+
 export function useRules(): UseQueryResult<Rule[]> {
   return useQuery({
     queryKey: queryKeys.rules,
