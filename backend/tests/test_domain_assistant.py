@@ -22,6 +22,7 @@ from resumetailor.db.repositories import (
     upsert_master_resume,
 )
 from resumetailor.domain.assistant import (
+    MAX_TOOL_CALLS_PER_ROUND,
     MAX_TOOL_ITERATIONS,
     AssistantAction,
     AssistantReply,
@@ -461,6 +462,49 @@ async def test_the_turn_finalizes_at_the_round_budget_even_if_pressed_for_more(
     # ran, leaving "k" at the second-to-last round's value.
     written = {(r.section, r.rule_key): r.rule_value for r in get_rules(db_path)}
     assert written[("s", "k")] == str(MAX_TOOL_ITERATIONS - 1)
+
+
+@pytest.mark.anyio
+async def test_a_single_round_caps_how_many_tool_calls_it_executes(db_path, pdfs_dir):
+    """Regression for D-78.
+
+    The round budget bounds how many *rounds* of tool-calling a turn goes
+    through, but nothing capped how many calls one round's single response
+    could contain -- a generous or adversarial response asking for many tool
+    calls at once used to run every one of them, fanning one metered request
+    out into many provider calls and render invocations. `MAX_TOOL_CALLS_PER_ROUND`
+    (well above what any real one-round request needs from a fixed four-tool
+    set) caps that, and every call beyond the cap still gets a tool-result
+    message -- required by the wire contract -- explaining why it did not run.
+    """
+    before = {(r.section, r.rule_key): r.rule_value for r in get_rules(db_path)}
+    key = next(iter(before))
+
+    one_round_many_calls = [
+        tool_call(
+            "update_generation_rules",
+            {"rules": [{"section": key[0], "rule_key": key[1], "rule_value": str(n)}]},
+        )
+        for n in range(MAX_TOOL_CALLS_PER_ROUND + 3)
+    ]
+    api = build_api(
+        stream_rounds=[one_round_many_calls, ["Done."]],
+    )
+
+    events = await run(api, db_path, pdfs_dir)
+
+    assert events[-1] == AssistantReply(
+        text="Done.", action=AssistantAction(type="rules_updated")
+    )
+    # Exactly one tool-result message per call this round issued, executed or not.
+    second_request_messages = api.stream_calls[1][0]  # type: ignore[attr-defined]
+    tool_results = [m for m in second_request_messages if m.get("role") == "tool"]
+    assert len(tool_results) == len(one_round_many_calls)
+    not_executed = [m for m in tool_results if "Not executed" in m["content"]]
+    assert len(not_executed) == 3
+    # The last call to actually run is the one at the cap, so that value wins.
+    after = {(r.section, r.rule_key): r.rule_value for r in get_rules(db_path)}
+    assert after[key] == str(MAX_TOOL_CALLS_PER_ROUND - 1)
 
 
 @pytest.mark.anyio

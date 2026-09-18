@@ -67,6 +67,19 @@ logger = logging.getLogger(__name__)
 #: than one round in the first place.
 MAX_TOOL_ITERATIONS: Final = 4
 
+#: D-78: the round budget above bounds how many times the model may ask for
+#: tools, but nothing capped how many calls one round's single response could
+#: contain -- `run_assistant_turn` executed every `ToolCall` a response
+#: carried, so a generous or adversarial provider response (a crafted job
+#: description or imported-PDF text asking for many actions at once) could
+#: fan one rate-limited `/api/chat/stream` request out into many
+#: `generate_tailored_resume` calls -- each itself further provider calls
+#: plus a real render subprocess -- undermining task 2.4's cost/DoS control
+#: (D-28's cost half) in exactly the way that limiter was never sized for.
+#: Four matches the tool set's own size (ADR 0005): a genuine turn asking for
+#: every tool at once is already at the ceiling a well-formed request needs.
+MAX_TOOL_CALLS_PER_ROUND: Final = 4
+
 
 @dataclass(frozen=True, slots=True)
 class AssistantAction:
@@ -528,7 +541,7 @@ async def run_assistant_turn(
             return
 
         conversation.append(_tool_call_message("".join(round_text), tool_calls))
-        for call in tool_calls:
+        for call in tool_calls[:MAX_TOOL_CALLS_PER_ROUND]:
             outcome = await _execute_tool(
                 call, api=api, db_path=db_path, pdfs_dir=pdfs_dir
             )
@@ -536,4 +549,21 @@ async def run_assistant_turn(
                 action = outcome.action
             conversation.append(
                 {"role": "tool", "tool_call_id": call.id, "content": outcome.content}
+            )
+        # Every tool_call_id from this round needs a matching tool message
+        # before the next request, or the next `api.stream` call is a
+        # malformed conversation as far as the provider's API is concerned --
+        # so a call beyond the cap still gets a reply, just one that says why
+        # it did not run, rather than being silently dropped.
+        for call in tool_calls[MAX_TOOL_CALLS_PER_ROUND:]:
+            conversation.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": call.id,
+                    "content": (
+                        f"Not executed: at most {MAX_TOOL_CALLS_PER_ROUND} tool "
+                        "calls run per turn, and this round already reached "
+                        "that limit."
+                    ),
+                }
             )
