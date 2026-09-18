@@ -1,7 +1,7 @@
 """
 Tier 2: Per-port configurable simulators for unit tests.
 
-ConfigurableBackendAPI extends BackendAPI (from app.backend_api, created by
+ConfigurableBackendAPI extends BackendAPI (from resumetailor.backend_api, created by
 Wave 2 Backend API Engineer). Until Wave 2 is complete this file will raise
 an ImportError at import time — that is expected and handled in test_llm.py
 via pytest.skip().
@@ -9,7 +9,7 @@ via pytest.skip().
 from __future__ import annotations
 from typing import AsyncIterator
 
-from app.backend_api import BackendAPI  # available after Wave 2
+from resumetailor.backend_api import BackendAPI  # available after Wave 2
 
 
 class SimulatedLLMPort:

@@ -1,7 +1,10 @@
-# backend/app/backend_api.py
+# backend/src/resumetailor/backend_api.py
+#
+# MOVED BY TASK 1.3, together with ports.py: the facade and the composition
+# root follow the three adapters into llm/, rendering/ and pdf/.
 from __future__ import annotations
 from typing import AsyncIterator
-from .ports import LLMPort, PDFExtractPort, PDFRenderPort
+from resumetailor.ports import LLMPort, PDFExtractPort, PDFRenderPort
 
 
 class BackendAPI:
@@ -24,11 +27,11 @@ class BackendAPI:
 
 
 def create_real_backend() -> BackendAPI:
-    from .adapters import LiteLLMAdapter, PyMuPDFAdapter, RenderCVAdapter
-    from .config import get_settings
+    from resumetailor.adapters import LiteLLMAdapter, PyMuPDFAdapter, RenderCVAdapter
+    from resumetailor.core.config import get_settings
     settings = get_settings()
     return BackendAPI(
-        llm=LiteLLMAdapter(model=settings.LLM_MODEL, api_key=settings.OPENAI_API_KEY),
+        llm=LiteLLMAdapter(model=settings.LLM_MODEL, api_key=settings.llm_api_key),
         pdf_render=RenderCVAdapter(),
         pdf_extract=PyMuPDFAdapter(),
     )

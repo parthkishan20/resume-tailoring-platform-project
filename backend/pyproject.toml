@@ -36,7 +36,7 @@ dev = [
 [tool.ruff]
 line-length = 88
 target-version = "py312"
-src = ["."]
+src = ["src", "."]
 extend-exclude = [".venv", "static", "out"]
 
 [tool.ruff.lint]
@@ -90,11 +90,16 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 # --- LEGACY EXEMPTIONS -----------------------------------------------------
-# `backend/app/` is the pre-restructure package. Wave 1.1 moves it to
-# `backend/src/resumetailor/`, at which point these lines are deleted rather
-# than carried across: nothing under `src/` is exempt from anything.
-# 153 findings are suppressed here. Task 0.13 clears them.
-"app/**" = [
+# These are the modules wave 1.1 carried across the src-layout move unchanged,
+# because moving code and reformatting it in the same diff is a diff nobody can
+# review. They are named one by one rather than globbed as `src/resumetailor/**`
+# so that everything 1.1 wrote (`core/`, `main.py`, `ports.py`) and everything
+# added from now on is exempt from nothing.
+#
+# Each of these modules is split or rewritten by task 1.2, 1.3, 2.2 or 2.5 —
+# see the comment at the top of each file. 153 findings are suppressed here.
+# Task 0.13 clears them.
+"src/resumetailor/{adapters,backend_api,database,deps,prompts,simulator,yaml_utils}.py" = [
     "RUF100",   # 7  — the inline `# noqa: PLC0415` directives read as unused now that PLC0415
                 #      is globally ignored. Removing the directives is a source edit; task 0.13.
     "TID252",   # 47 — relative imports; absolute `resumetailor.*` arrives with the src-layout in 1.1
@@ -122,6 +127,36 @@ ignore = [
     "PLR0912",  # 1  — too many branches
     "PLR0915",  # 1  — too many statements
     "TRY300",   # 1  — `return` in `try` rather than `else`
+]
+# Same list, same owner (task 0.13). Split out only because ruff keys
+# per-file-ignores by glob and these sit one directory down.
+"src/resumetailor/api/routers/*.py" = [
+    "RUF100",
+    "TID252",
+    "I001",
+    "E501",
+    "RUF001",
+    "TRY003",
+    "ARG001",
+    "F401",
+    "BLE001",
+    "UP035",
+    "EM102",
+    "E702",
+    "PLR0913",
+    "PLR0917",
+    "RET504",
+    "ARG002",
+    "EM101",
+    "S608",
+    "E741",
+    "ASYNC240",
+    "C901",
+    "PLR2004",
+    "B904",
+    "PLR0912",
+    "PLR0915",
+    "TRY300",
 ]
 
 # --- PERMANENT TEST EXEMPTIONS ---------------------------------------------
@@ -152,26 +187,26 @@ ignore = [
 ban-relative-imports = "all"
 
 [tool.ruff.lint.isort]
-known-first-party = ["app", "tests"]
+known-first-party = ["resumetailor", "tests"]
 
 [tool.ruff.format]
 docstring-code-format = true
 # --- LEGACY EXEMPTIONS -----------------------------------------------------
 # `ruff format --check` is enforced on every file NOT in this list, and on
-# every file added from now on. These 20 predate the formatter and reformatting
-# them is a source change this task does not own. Task 0.13 runs `make fmt`
-# once and deletes this block.
+# every file added from now on. These predate the formatter and reformatting
+# them is a source change task 0.13 owns, not 1.1. Paths were retargeted by the
+# src-layout move; `app/main.py` left the list because 1.1 rewrote main.py as an
+# app factory and formatted it.
 exclude = [
-    "app/adapters.py",
-    "app/backend_api.py",
-    "app/database.py",
-    "app/deps.py",
-    "app/main.py",
-    "app/routes/chat.py",
-    "app/routes/evaluate.py",
-    "app/routes/resumes.py",
-    "app/simulator.py",
-    "app/yaml_utils.py",
+    "src/resumetailor/adapters.py",
+    "src/resumetailor/backend_api.py",
+    "src/resumetailor/database.py",
+    "src/resumetailor/deps.py",
+    "src/resumetailor/api/routers/chat.py",
+    "src/resumetailor/api/routers/evaluate.py",
+    "src/resumetailor/api/routers/resumes.py",
+    "src/resumetailor/simulator.py",
+    "src/resumetailor/yaml_utils.py",
     "tests/conftest.py",
     "tests/helpers/simulator.py",
     "tests/test_database.py",
@@ -190,7 +225,11 @@ exclude = [
 
 [tool.mypy]
 python_version = "3.12"
-files = ["app"]
+files = ["src/resumetailor"]
+# src-layout: the package is not installed (uv.lock declares this project
+# `virtual`), so mypy is told where to find it, the same way pytest is below.
+mypy_path = "src"
+explicit_package_bases = true
 strict = true
 warn_unused_configs = true
 warn_unreachable = true
@@ -206,13 +245,31 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 # --- LEGACY EXEMPTIONS ---
-# `--strict` on `app/` produces 88 errors. 84 of them are these three codes:
-# bare `dict`/`list` generics (39), unannotated defs (33), and calls into
-# unannotated defs (12). They are annotation debt, not bugs, and the modules
-# carrying them are rewritten in wave 1.1 under `src/resumetailor/`. Every
-# other strict check — including the four real findings pinned below — stays
-# on. Task 0.14 clears these.
-module = ["app.*"]
+# `--strict` on the pre-restructure modules produces 88 errors. 84 of them are
+# these three codes: bare `dict`/`list` generics (39), unannotated defs (33),
+# and calls into unannotated defs (12). They are annotation debt, not bugs, and
+# the modules carrying them are split by tasks 1.2, 1.3, 2.2 and 2.5.
+#
+# Listed module by module rather than as `resumetailor.*` so that everything
+# wave 1.1 wrote — `resumetailor.core.*`, `resumetailor.main`,
+# `resumetailor.ports` — is under full `--strict`, as is anything added later.
+# Every other strict check, including the four real findings pinned below,
+# stays on. Task 0.14 clears these.
+#
+# `resumetailor.adapters` and `resumetailor.deps` are absent from this list and
+# carry the same three codes in their own blocks below: mypy refuses two
+# overrides that name the same module exactly, and those two also pin a real
+# finding. A glob and an exact name may coexist, which is why
+# `resumetailor.api.routers.*` can stay here alongside the `...routers.resumes`
+# pin below.
+module = [
+    "resumetailor.backend_api",
+    "resumetailor.database",
+    "resumetailor.prompts",
+    "resumetailor.simulator",
+    "resumetailor.yaml_utils",
+    "resumetailor.api.routers.*",
+]
 disable_error_code = ["type-arg", "no-untyped-def", "no-untyped-call"]
 
 # The remaining four are genuine and each is already a registered defect.
@@ -222,19 +279,35 @@ disable_error_code = ["type-arg", "no-untyped-def", "no-untyped-call"]
 # D-59: provider `content` is `str | None` on a refusal and flows into a
 # function declared to return `str`. Also a pymupdf stub gap: `Document` is
 # iterable at runtime but the shipped stub does not say so.
-module = ["app.adapters"]
-disable_error_code = ["no-any-return", "attr-defined"]
+# `no-any-return` and `attr-defined` are the real findings; the three that
+# follow them are the same annotation debt as the block above, and go with it
+# when task 0.14 runs.
+module = ["resumetailor.adapters"]
+disable_error_code = [
+    "no-any-return",
+    "attr-defined",
+    "type-arg",
+    "no-untyped-def",
+    "no-untyped-call",
+]
 
 [[tool.mypy.overrides]]
 # `SimulatedBackendAPI` does not structurally satisfy the `BackendAPI` port.
-# Real; fixed when the port boundary is rebuilt in wave 1.1.
-module = ["app.deps"]
-disable_error_code = ["return-value"]
+# Real; fixed when the port boundary is rebuilt in task 1.3. `return-value` is
+# the real finding; the three that follow are annotation debt for task 0.14,
+# here rather than in the block above for the reason given there.
+module = ["resumetailor.deps"]
+disable_error_code = [
+    "return-value",
+    "type-arg",
+    "no-untyped-def",
+    "no-untyped-call",
+]
 
 [[tool.mypy.overrides]]
 # An `Optional` return is handed to `asyncio.to_thread` where a non-optional
 # is expected. Real; part of D-20 (partial-failure orphans).
-module = ["app.routes.resumes"]
+module = ["resumetailor.api.routers.resumes"]
 disable_error_code = ["arg-type"]
 
 # ---------------------------------------------------------------------------
@@ -243,16 +316,17 @@ disable_error_code = ["arg-type"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# `backend/` is not an installed package yet, so `app` is importable only
-# because it sits on sys.path. Wave 1.1 moves the code under `src/` and
-# installs it, at which point this line goes and `--import-mode=importlib`
-# becomes the right default.
-pythonpath = ["."]
+# src-layout. `resumetailor` lives under `src/`; `tests.helpers` is imported by
+# name from `tests/conftest.py`, so `.` stays on the path too. The project is
+# `virtual` in uv.lock (uv installs the dependency tree but not this package),
+# so neither entry can be dropped until that changes — which means regenerating
+# uv.lock and reordering the Dockerfile's dependency layer. See the 1.1 report.
+pythonpath = ["src", "."]
 addopts = [
     "--strict-markers",
     "--strict-config",
     "-ra",
-    "--cov=app",
+    "--cov=resumetailor",
     "--cov-report=term-missing:skip-covered",
     "--cov-report=xml",
     "--cov-fail-under=79",
@@ -266,12 +340,12 @@ markers = [
 
 [tool.coverage.run]
 branch = false
-source = ["app"]
+source = ["resumetailor"]
 
 [tool.coverage.report]
 precision = 2
 show_missing = true
-# MEASURED, NOT ASPIRATIONAL. The suite covers 79.68% of `app/` today
+# MEASURED, NOT ASPIRATIONAL. The suite covers 79.68% of `src/resumetailor/`
 # (89 tests, 989 statements, 201 uncovered). The floor is set one point below
 # that so the gate fails on a regression and not on rounding.
 # AGENTS.md section 8 requires 85% on `domain/`, `services/` and `db/`.

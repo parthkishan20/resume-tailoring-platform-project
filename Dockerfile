@@ -22,8 +22,13 @@ RUN npm run build
 # ── Stage 2: Python runtime ──────────────────────────────────────────────────
 FROM python:3.12-slim
 
+# PYTHONPATH: src-layout. `resumetailor-backend` is a virtual project in
+# uv.lock, so uv installs the dependency tree but not this package, and `src/`
+# has to be on the path for `resumetailor.main` to import. Mirrors `pythonpath`
+# in [tool.pytest.ini_options].
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app/backend/src
 
 # uv, pinned by version and digest. A floating tag here would silently change
 # the tool that resolves the entire dependency tree.
@@ -40,21 +45,22 @@ RUN uv sync --frozen --no-dev
 
 # Application source, named individually so the host's conda/darwin
 # `backend/.venv` cannot ride along (PLAN.md D-36).
-COPY backend/app ./app
+COPY backend/src ./src
 COPY backend/db ./db
 COPY backend/rendercv_config ./rendercv_config
 
-# Frontend static export, served by FastAPI at / (main.py:68-70).
+# Frontend static export, served by FastAPI at / (the static mount at the end of
+# `create_app`, which resolves `STATIC_DIR` to /app/backend/static).
 COPY --from=frontend-builder /build/frontend/out ./static/
 
-# /app/db and /app/pdfs are created at lifespan startup (main.py:23-24) and are
-# volume mount points in docker-compose.yml.
+# /app/db and /app/pdfs are created by the lifespan on startup and are volume
+# mount points in docker-compose.yml.
 
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')" || exit 1
 
-CMD ["uv", "run", "--project", "/app/backend", "uvicorn", "app.main:app", \
+CMD ["uv", "run", "--project", "/app/backend", "uvicorn", "resumetailor.main:app", \
      "--host", "0.0.0.0", "--port", "8000", \
      "--workers", "1"]

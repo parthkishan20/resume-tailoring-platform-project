@@ -1,4 +1,4 @@
-# backend/app/routes/health.py
+# backend/src/resumetailor/api/routers/health.py
 from fastapi import APIRouter
 
 router = APIRouter()

@@ -1,9 +1,17 @@
+# MOVED BY TASK 1.3. This becomes llm/stub.py, the deterministic stub used by
+# the tests and by LLM_MOCK. See PLAN.md section 3.2.
+#
+# `_FIXTURE_PDF` still points into `backend/tests/`, which is where it pointed
+# before the move. That is a real problem and 1.3 should fix it: `.dockerignore`
+# excludes `backend/tests/`, so inside the image this path does not exist and
+# LLM_MOCK render fails with FileNotFoundError. See the 1.1 report.
 from __future__ import annotations
 import json
-from pathlib import Path
 from typing import AsyncIterator
 
-_FIXTURE_PDF = Path(__file__).parent.parent / "tests" / "fixtures" / "mock.pdf"
+from resumetailor.core.config import BACKEND_ROOT
+
+_FIXTURE_PDF = BACKEND_ROOT / "tests" / "fixtures" / "mock.pdf"
 
 # ── Tier 1 constants (PLAN.md §11) ─────────────────────────────────────────
 

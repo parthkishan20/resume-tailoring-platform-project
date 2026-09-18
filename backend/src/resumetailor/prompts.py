@@ -1,3 +1,6 @@
+# MOVED BY TASK 1.3 to resume_schema/prompt.py, where the schema text is
+# GENERATED from the canonical Pydantic models rather than hand-maintained
+# here. See PLAN.md D-22.
 GENERATION_SYSTEM_PROMPT = """\
 You are ResumeTailor-v2, an expert ATS-optimization and resume rewriting system.
 

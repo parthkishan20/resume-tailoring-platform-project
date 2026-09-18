@@ -6,7 +6,7 @@ to `rendercv render` (rendercv 2.8 validates with pydantic + phonenumbers).
 import yaml
 import pytest
 
-from app.yaml_utils import normalize_to_rendercv
+from resumetailor.yaml_utils import normalize_to_rendercv
 
 
 def _norm(raw: str) -> dict:

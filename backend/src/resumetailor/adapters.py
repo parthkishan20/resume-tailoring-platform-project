@@ -1,3 +1,10 @@
+# MOVED BY TASK 1.3. This module holds three unrelated adapters:
+#   LiteLLMAdapter  -> llm/litellm_adapter.py
+#   RenderCVAdapter -> rendering/runner.py (+ rendering/config.py, errors.py)
+#   PyMuPDFAdapter  -> pdf/extract.py
+# See PLAN.md section 3.3. Nothing here was changed by the src-layout move
+# except the import paths and `_CONFIG_DIR`, which now comes from core.config
+# because `__file__.parent.parent` no longer resolves to `backend/`.
 from __future__ import annotations
 import asyncio
 import os
@@ -7,9 +14,10 @@ from typing import AsyncIterator
 
 import yaml
 
-from .ports import LLMAuthError, LLMUnavailableError, PDFExtractError, RenderError
+from resumetailor.core.config import RENDERCV_CONFIG_DIR
+from resumetailor.ports import LLMAuthError, LLMUnavailableError, PDFExtractError, RenderError
 
-_CONFIG_DIR = Path(__file__).parent.parent / "rendercv_config"
+_CONFIG_DIR = RENDERCV_CONFIG_DIR
 
 
 def _llm_exceptions() -> tuple[type[Exception], tuple[type[Exception], ...]]:

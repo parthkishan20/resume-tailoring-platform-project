@@ -9,7 +9,7 @@ import asyncio
 import json
 import pytest
 
-from app.ports import (
+from resumetailor.ports import (
     LLMPort,
     PDFRenderPort,
     PDFExtractPort,
@@ -55,7 +55,7 @@ def test_ports_are_runtime_checkable():
 
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
-from app.adapters import LiteLLMAdapter
+from resumetailor.adapters import LiteLLMAdapter
 
 
 @pytest.mark.anyio
@@ -84,7 +84,7 @@ async def test_litellm_adapter_maps_rate_limit_to_unavailable():
 
 @pytest.mark.anyio
 async def test_rendercv_adapter_maps_nonzero_exit_to_render_error():
-    from app.adapters import RenderCVAdapter
+    from resumetailor.adapters import RenderCVAdapter
     adapter = RenderCVAdapter()
     proc_mock = MagicMock()
     proc_mock.returncode = 1
@@ -97,7 +97,7 @@ async def test_rendercv_adapter_maps_nonzero_exit_to_render_error():
 
 @pytest.mark.anyio
 async def test_rendercv_adapter_passes_design_flag_and_embeds_locale():
-    from app.adapters import RenderCVAdapter, _CONFIG_DIR
+    from resumetailor.adapters import RenderCVAdapter, _CONFIG_DIR
     import yaml as _yaml
     adapter = RenderCVAdapter()
     proc_mock = MagicMock()
@@ -111,7 +111,7 @@ async def test_rendercv_adapter_passes_design_flag_and_embeds_locale():
         dumped_data.append(data)
         return real_dump(data, **kwargs)
 
-    with patch("app.adapters.yaml.dump", side_effect=capture_dump):
+    with patch("resumetailor.adapters.yaml.dump", side_effect=capture_dump):
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = proc_mock
             with pytest.raises(RenderError):
@@ -126,7 +126,7 @@ async def test_rendercv_adapter_passes_design_flag_and_embeds_locale():
 
 @pytest.mark.anyio
 async def test_pymupdf_adapter_oversized_pdf_raises_extract_error():
-    from app.adapters import PyMuPDFAdapter
+    from resumetailor.adapters import PyMuPDFAdapter
     adapter = PyMuPDFAdapter()
     with pytest.raises(PDFExtractError):
         await adapter.extract(b"x" * (adapter._MAX_BYTES + 1))
@@ -136,7 +136,7 @@ async def test_pymupdf_adapter_oversized_pdf_raises_extract_error():
 # Task 3 — Mock PDF fixture + Tier 1 SimulatedBackendAPI
 # ---------------------------------------------------------------------------
 
-from app.simulator import (
+from resumetailor.simulator import (
     SimulatedBackendAPI,
     MOCK_CHAT_RESULT,
     MOCK_GENERATION_RESULT_YAML,
@@ -180,7 +180,7 @@ async def test_simulator_extract_returns_text():
 
 # ---------------------------------------------------------------------------
 # Task 4 — Tier 2 ConfigurableBackendAPI (helpers/simulator.py)
-# Note: ConfigurableBackendAPI imports BackendAPI from app.backend_api which
+# Note: ConfigurableBackendAPI imports BackendAPI from resumetailor.backend_api which
 # is created by Wave 2 Backend API Engineer. Tests are skipped until then.
 # ---------------------------------------------------------------------------
 
@@ -189,7 +189,7 @@ async def test_configurable_backend_llm_complete():
     try:
         from tests.helpers.simulator import ConfigurableBackendAPI
     except ImportError:
-        pytest.skip("app.backend_api not yet available (Wave 2)")
+        pytest.skip("resumetailor.backend_api not yet available (Wave 2)")
     api = ConfigurableBackendAPI()
     api.sim_llm.set_complete_response("hello world")
     result = await api.complete([{"role": "user", "content": "hi"}])
@@ -202,7 +202,7 @@ async def test_configurable_backend_llm_error():
     try:
         from tests.helpers.simulator import ConfigurableBackendAPI
     except ImportError:
-        pytest.skip("app.backend_api not yet available (Wave 2)")
+        pytest.skip("resumetailor.backend_api not yet available (Wave 2)")
     api = ConfigurableBackendAPI()
     api.sim_llm.set_complete_error(LLMUnavailableError("down"))
     with pytest.raises(LLMUnavailableError):
@@ -214,7 +214,7 @@ async def test_configurable_backend_render_error():
     try:
         from tests.helpers.simulator import ConfigurableBackendAPI
     except ImportError:
-        pytest.skip("app.backend_api not yet available (Wave 2)")
+        pytest.skip("resumetailor.backend_api not yet available (Wave 2)")
     api = ConfigurableBackendAPI()
     api.sim_pdf_render.set_error(RenderError("bad yaml"))
     with pytest.raises(RenderError):

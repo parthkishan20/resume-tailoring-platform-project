@@ -1,3 +1,5 @@
+# MOVED BY TASK 1.3, split into resume_schema/{models,normalize,sections,
+# repair,validate}.py. See PLAN.md section 3.3 and D-08, D-17, D-22.
 """Normalise LLM-generated YAML to valid rendercv schema.
 
 rendercv schema summary:

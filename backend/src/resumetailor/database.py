@@ -1,5 +1,11 @@
+# MOVED BY TASK 1.2. This module becomes db/engine.py, db/migrate.py,
+# db/models.py, db/seed.py and db/repositories/*. See PLAN.md section 3.3.
+# Nothing here was changed by the src-layout move except the schema.sql path,
+# which now comes from core.config because `__file__.parent.parent` no longer
+# resolves to `backend/`.
 import sqlite3
-from pathlib import Path
+
+from resumetailor.core.config import SCHEMA_SQL_PATH
 
 DEFAULT_USER_ID = "default"
 HISTORY_LIMIT = 10
@@ -28,7 +34,7 @@ DEFAULT_SYSTEM_PROMPT = (
 
 
 def _schema_sql() -> str:
-    return (Path(__file__).parent.parent / "db" / "schema.sql").read_text()
+    return SCHEMA_SQL_PATH.read_text()
 
 
 def init_db(db_path: str) -> None:

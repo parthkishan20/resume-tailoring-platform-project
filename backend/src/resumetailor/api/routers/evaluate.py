@@ -1,4 +1,4 @@
-# backend/app/routes/evaluate.py
+# backend/src/resumetailor/api/routers/evaluate.py
 from __future__ import annotations
 import asyncio
 import json
@@ -7,9 +7,9 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from ..backend_api import BackendAPI
-from ..deps import get_backend
-from ..ports import LLMAuthError, LLMUnavailableError
+from resumetailor.backend_api import BackendAPI
+from resumetailor.deps import get_backend
+from resumetailor.ports import LLMAuthError, LLMUnavailableError
 
 router = APIRouter()
 

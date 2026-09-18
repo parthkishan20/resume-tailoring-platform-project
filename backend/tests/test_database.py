@@ -2,7 +2,7 @@ import sqlite3
 import tempfile
 import os
 import pytest
-from app.database import (
+from resumetailor.database import (
     init_db, DEFAULT_RULES, DEFAULT_SYSTEM_PROMPT,
     get_master_resume, upsert_master_resume, delete_master_resume,
     list_resumes, create_resume, get_resume, update_resume, delete_resume,

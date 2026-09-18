@@ -1,5 +1,5 @@
 import pytest
-from app.simulator import MOCK_IMPORT_YAML
+from resumetailor.simulator import MOCK_IMPORT_YAML
 
 
 @pytest.mark.anyio

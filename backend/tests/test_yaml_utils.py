@@ -1,5 +1,5 @@
 import yaml
-from app.yaml_utils import _normalize_certifications, normalize_to_rendercv
+from resumetailor.yaml_utils import _normalize_certifications, normalize_to_rendercv
 
 
 def test_no_design_injected_when_absent():

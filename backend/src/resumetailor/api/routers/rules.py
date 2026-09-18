@@ -1,9 +1,9 @@
-# backend/app/routes/rules.py
+# backend/src/resumetailor/api/routers/rules.py
 import asyncio
 from fastapi import APIRouter
 from pydantic import BaseModel
-from ..config import get_settings
-from ..database import get_rules, upsert_rules, reset_rules
+from resumetailor.core.config import get_settings
+from resumetailor.database import get_rules, upsert_rules, reset_rules
 
 router = APIRouter()
 

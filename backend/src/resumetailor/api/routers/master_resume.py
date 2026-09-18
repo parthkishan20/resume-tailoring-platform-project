@@ -1,4 +1,4 @@
-# backend/app/routes/master_resume.py
+# backend/src/resumetailor/api/routers/master_resume.py
 from __future__ import annotations
 import asyncio
 import json
@@ -8,12 +8,16 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
-from ..backend_api import BackendAPI
-from ..config import get_settings
-from ..database import get_master_resume, upsert_master_resume, delete_master_resume
-from ..deps import get_backend
-from ..ports import RenderError
-from ..yaml_utils import normalize_to_rendercv
+from resumetailor.backend_api import BackendAPI
+from resumetailor.core.config import get_settings
+from resumetailor.database import (
+    get_master_resume,
+    upsert_master_resume,
+    delete_master_resume,
+)
+from resumetailor.deps import get_backend
+from resumetailor.ports import RenderError
+from resumetailor.yaml_utils import normalize_to_rendercv
 
 router = APIRouter()
 

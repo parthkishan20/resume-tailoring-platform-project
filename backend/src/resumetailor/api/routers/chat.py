@@ -1,4 +1,4 @@
-# backend/app/routes/chat.py
+# backend/src/resumetailor/api/routers/chat.py
 from __future__ import annotations
 import asyncio
 import json
@@ -7,11 +7,11 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from ..backend_api import BackendAPI
-from ..config import get_settings
-from ..database import get_chat_messages, add_chat_message, clear_chat, get_system_prompt
-from ..deps import get_backend
-from ..ports import LLMAuthError, LLMUnavailableError
+from resumetailor.backend_api import BackendAPI
+from resumetailor.core.config import get_settings
+from resumetailor.database import get_chat_messages, add_chat_message, clear_chat, get_system_prompt
+from resumetailor.deps import get_backend
+from resumetailor.ports import LLMAuthError, LLMUnavailableError
 
 router = APIRouter()
 

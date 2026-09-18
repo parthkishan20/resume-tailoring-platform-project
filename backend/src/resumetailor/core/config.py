@@ -1,0 +1,93 @@
+"""Settings and the on-disk layout the process depends on.
+
+Everything the application reads from the environment is declared once, here,
+and reached through :func:`get_settings`. Two rules hold:
+
+* A secret is a ``SecretStr``. It does not appear in a log line, a traceback,
+  or a ``repr`` by accident.
+* Configuration that is required to do real work is checked at **startup**, by
+  :func:`validate_startup_settings`, not at the first request that needs it.
+  Before this module existed, a missing ``OPENAI_API_KEY`` defaulted to the
+  literal ``"mock-key"``; the process booted, reported itself healthy, and then
+  failed on the user's first generation with a provider auth error. See
+  PLAN.md D-15.
+
+The path constants below are resolved from this file's location rather than
+from the working directory, so they hold for both `uv run` from `backend/` and
+the container, where the tree is rooted at `/app/backend`.
+"""
+
+from __future__ import annotations
+
+from functools import lru_cache
+from pathlib import Path
+from typing import Literal
+
+from pydantic import SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from resumetailor.core.errors import ConfigurationError
+
+# ── Filesystem layout ────────────────────────────────────────────────────────
+#
+# <BACKEND_ROOT>/
+#   db/schema.sql          the SQLite bootstrap script (task 1.2 replaces it
+#                          with backend/migrations/)
+#   rendercv_config/       design.yaml, locale.yaml, settings.yaml
+#   static/                the Next.js export, mounted at / by main.py
+#   src/resumetailor/      this package
+PACKAGE_ROOT = Path(__file__).resolve().parent.parent
+BACKEND_ROOT = PACKAGE_ROOT.parents[1]
+
+RENDERCV_CONFIG_DIR = BACKEND_ROOT / "rendercv_config"
+SCHEMA_SQL_PATH = BACKEND_ROOT / "db" / "schema.sql"
+STATIC_DIR = BACKEND_ROOT / "static"
+
+
+class Settings(BaseSettings):
+    """Process configuration, read from the environment and from ``.env``."""
+
+    # Empty rather than "mock-key": an unset key must be detectable.
+    OPENAI_API_KEY: SecretStr = SecretStr("")
+    LLM_MODEL: str = "gpt-4o-mini"
+    LLM_MOCK: bool = False
+
+    DB_PATH: str = "/app/db/resumedb.db"
+    PDFS_DIR: str = "/app/pdfs"
+
+    LOG_LEVEL: str = "INFO"
+    # "json" for anything that ships logs somewhere; "text" when a human is
+    # reading the terminal.
+    LOG_FORMAT: Literal["json", "text"] = "json"
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+    )
+
+    @property
+    def llm_api_key(self) -> str:
+        """The provider key, unwrapped. The only place the secret is read."""
+        return self.OPENAI_API_KEY.get_secret_value()
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    return Settings()
+
+
+def validate_startup_settings(settings: Settings) -> None:
+    """Fail the boot rather than the first request.
+
+    Raises:
+        ConfigurationError: if the process is configured to call a real
+            provider but has no key to call it with.
+    """
+    if not settings.LLM_MOCK and not settings.llm_api_key:
+        msg = (
+            "OPENAI_API_KEY is not set. Set it in the environment or in "
+            "backend/.env, or set LLM_MOCK=true to run against the "
+            "deterministic stub."
+        )
+        raise ConfigurationError(msg)

@@ -1,9 +1,13 @@
-# backend/app/routes/system_prompt.py
+# backend/src/resumetailor/api/routers/system_prompt.py
 import asyncio
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from ..config import get_settings
-from ..database import get_system_prompt, upsert_system_prompt, reset_system_prompt
+from resumetailor.core.config import get_settings
+from resumetailor.database import (
+    get_system_prompt,
+    upsert_system_prompt,
+    reset_system_prompt,
+)
 
 router = APIRouter()
 

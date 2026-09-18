@@ -64,7 +64,7 @@ sys.modules.setdefault("litellm.exceptions", _exc_module)
 # ---------------------------------------------------------------------------
 # Per-test settings isolation
 #
-# `app.config.get_settings` and `app.deps._backend` are both `lru_cache`d, so a
+# `resumetailor.core.config.get_settings` and `resumetailor.deps._backend` are both `lru_cache`d, so a
 # Settings object built inside one test stays live for every test that follows.
 # Tests used to paper over that by calling `cache_clear()` on entry, which still
 # leaked a Settings pointing at a deleted `tmp_path` into the *next* test and
@@ -83,8 +83,8 @@ class IsolatedSettings(NamedTuple):
 
 @pytest.fixture(autouse=True)
 def isolated_settings(tmp_path, monkeypatch):
-    from app.config import get_settings
-    from app.deps import _backend
+    from resumetailor.core.config import get_settings
+    from resumetailor.deps import _backend
 
     db_path = tmp_path / "test.db"
     pdfs_dir = tmp_path / "pdfs"
@@ -105,7 +105,7 @@ def isolated_settings(tmp_path, monkeypatch):
 @pytest.fixture
 def db_path(isolated_settings) -> str:
     """This test's own SQLite database, schema applied and defaults seeded."""
-    from app.database import init_db
+    from resumetailor.database import init_db
 
     path = str(isolated_settings.db_path)
     init_db(path)
@@ -133,7 +133,7 @@ async def client(sim, db_path):
     # `db_path` is requested (not just autouse-ordered) so that the app under
     # test always has an initialised database behind it: httpx's ASGITransport
     # does not run the FastAPI lifespan that would otherwise create one.
-    from app.main import app, get_backend
+    from resumetailor.main import app, get_backend
     app.dependency_overrides[get_backend] = lambda: sim
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c

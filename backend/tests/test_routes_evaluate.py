@@ -1,6 +1,6 @@
 import json
 import pytest
-from app.ports import LLMAuthError
+from resumetailor.ports import LLMAuthError
 
 
 @pytest.mark.anyio
