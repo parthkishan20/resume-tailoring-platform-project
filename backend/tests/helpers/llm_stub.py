@@ -128,7 +128,10 @@ class DeterministicLLM:
         self.shapes_seen.append(classify(messages, response_format))
         return respond(messages, response_format)
 
-    async def stream(self, messages: list[dict]) -> AsyncIterator[str]:
+    async def stream(
+        self, messages: list[dict], tools: object | None = None
+    ) -> AsyncIterator[str]:
+        del tools  # accepted for LLMPort-shape parity; this stub never calls a tool
         self.stream_call_count += 1
         self.last_stream_messages = messages
         text = str(CANNED_CHAT_RESULT["text"])

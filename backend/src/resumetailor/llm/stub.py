@@ -15,9 +15,11 @@ a Docker daemon.
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
 from typing import Any
+
+from resumetailor.llm.port import StreamEvent, ToolCall, ToolSpec
 
 _FIXTURE_PDF = Path(__file__).resolve().parent / "fixtures" / "mock.pdf"
 
@@ -81,6 +83,65 @@ MOCK_GENERATION_PROGRESS: list[str] = [
     "Rendering PDF...",
 ]
 
+# ── Tool-call simulation (task 3.3, D-33) ───────────────────────────────────
+#
+# Real tool calling has no deterministic shape to canned-response against: two
+# providers streaming "the same" call fragment their JSON differently, and the
+# suite must never touch a network to find out. So this stub does the routing
+# a real model would do, but on a fixed trigger phrase instead of judgment: the
+# *caller's* input controls which tool fires, which is what makes a test (or a
+# person driving `LLM_MOCK=true`) able to ask for a specific one on demand.
+#
+# One tool call per assistant turn, mirroring the fixed four-tool set
+# (PLAN.md D8, ADR 0005): once the working conversation already contains a
+# `role: "tool"` message -- meaning a call from an earlier round in this same
+# turn already ran -- the stub answers in plain text instead of asking for
+# another, which is what stops `domain.assistant.run_assistant_turn`'s loop
+# after one round in every deterministic test.
+MOCK_TOOL_CALL_ID: str = "mock-tool-call-1"
+
+MOCK_TOOL_TRIGGERS: dict[str, tuple[str, dict[str, Any]]] = {
+    "generate a tailored resume": (
+        "generate_tailored_resume",
+        {"job_description": "Senior Software Engineer at Mock Corp"},
+    ),
+    "evaluate my resume": (
+        "evaluate_resume",
+        {"job_description": "Senior Software Engineer at Mock Corp", "resume_id": None},
+    ),
+    "update my generation rules": (
+        "update_generation_rules",
+        {
+            "rules": [
+                {"section": "experience", "rule_key": "max_bullets", "rule_value": "4"}
+            ]
+        },
+    ),
+    "edit my master resume": (
+        "edit_master_resume",
+        {"yaml_content": MOCK_GENERATION_RESULT_YAML},
+    ),
+}
+
+
+def _tool_trigger(messages: list[dict[str, Any]]) -> ToolCall | None:
+    """The tool call these messages ask for, if any trigger in
+    :data:`MOCK_TOOL_TRIGGERS` matches.
+    """
+    if any(m.get("role") == "tool" for m in messages):
+        return None
+    last_user = next(
+        (m.get("content") for m in reversed(messages) if m.get("role") == "user"), ""
+    )
+    haystack = str(last_user).lower()
+    for phrase, (name, arguments) in MOCK_TOOL_TRIGGERS.items():
+        if phrase in haystack:
+            return ToolCall(
+                id=MOCK_TOOL_CALL_ID, name=name, arguments=json.dumps(arguments)
+            )
+    return None
+
+
 # The en-dashes below are not a style choice: `backend/tests/helpers/llm_stub.py`
 # imports this constant rather than keeping its own copy, so a change here is a
 # change for both the pytest suite and the LLM_MOCK=true e2e stack.
@@ -128,9 +189,15 @@ class SimulatedBackendAPI:
 
     async def stream(
         self,
-        messages: list[dict[str, Any]],  # noqa: ARG002 — fixed answer
-    ) -> AsyncIterator[str]:
-        async def _gen() -> AsyncIterator[str]:
+        messages: list[dict[str, Any]],
+        tools: Sequence[ToolSpec] | None = None,
+    ) -> AsyncIterator[StreamEvent]:
+        call = _tool_trigger(messages) if tools else None
+
+        async def _gen() -> AsyncIterator[StreamEvent]:
+            if call is not None:
+                yield call
+                return
             text: str = MOCK_CHAT_RESULT["text"]
             yield text
 

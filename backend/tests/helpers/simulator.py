@@ -32,8 +32,9 @@ identical on every run.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 
+from resumetailor.llm.port import StreamEvent, ToolSpec
 from tests.helpers import llm_stub
 
 # The default render output. Not a real PDF, and not meant to be: a test that
@@ -49,11 +50,19 @@ class SimulatedLLMPort:
         self._complete_response: str | None = None
         self._complete_error: Exception | None = None
         self._stream_chunks: list[str] | None = None
+        #: One list of `StreamEvent` per successive `stream()` call this test
+        #: expects -- a `ToolCall` for a round that asks for a tool, plain
+        #: strings for a round that answers in text. `set_stream_events` is
+        #: what a chat-tool-calling test pins instead of `set_stream_chunks`,
+        #: because a tool-calling turn is more than one round.
+        self._stream_events: list[list[StreamEvent]] | None = None
+        self._stream_round: int = 0
         self._stream_error: Exception | None = None
         self.complete_call_count: int = 0
         self.stream_call_count: int = 0
         self.last_complete_messages: list[dict] | None = None
         self.last_stream_messages: list[dict] | None = None
+        self.last_stream_tools: Sequence[ToolSpec] | None = None
 
     def set_complete_response(self, response: str) -> None:
         self._complete_response = response
@@ -64,6 +73,19 @@ class SimulatedLLMPort:
 
     def set_stream_chunks(self, chunks: list[str]) -> None:
         self._stream_chunks = list(chunks)
+        self._stream_events = None
+        self._stream_error = None
+
+    def set_stream_events(self, rounds: list[list[StreamEvent]]) -> None:
+        """Pin what each successive `stream()` call yields, one round per call.
+
+        The last round is reused if `stream()` is called more times than
+        `rounds` has entries, so a test only has to specify as many rounds as
+        it cares about.
+        """
+        self._stream_events = rounds
+        self._stream_round = 0
+        self._stream_chunks = None
         self._stream_error = None
 
     def set_stream_error(self, exc: Exception) -> None:
@@ -80,20 +102,28 @@ class SimulatedLLMPort:
             return self._complete_response
         return llm_stub.respond(messages, response_format)
 
-    async def stream(self, messages: list[dict]) -> AsyncIterator[str]:
+    async def stream(
+        self, messages: list[dict], tools: Sequence[ToolSpec] | None = None
+    ) -> AsyncIterator[StreamEvent]:
         self.stream_call_count += 1
         self.last_stream_messages = messages
+        self.last_stream_tools = tools
         error = self._stream_error
-        if self._stream_chunks is not None:
-            chunks = list(self._stream_chunks)
-        else:
-            chunks = [str(llm_stub.CANNED_CHAT_RESULT["text"])]
 
-        async def _gen() -> AsyncIterator[str]:
+        if self._stream_events is not None:
+            index = min(self._stream_round, len(self._stream_events) - 1)
+            self._stream_round += 1
+            events: list[StreamEvent] = list(self._stream_events[index])
+        elif self._stream_chunks is not None:
+            events = list(self._stream_chunks)
+        else:
+            events = [str(llm_stub.CANNED_CHAT_RESULT["text"])]
+
+        async def _gen() -> AsyncIterator[StreamEvent]:
             if error:
                 raise error
-            for chunk in chunks:
-                yield chunk
+            for event in events:
+                yield event
 
         return _gen()
 
@@ -155,8 +185,10 @@ class ConfigurableBackendAPI:
     ) -> str:
         return await self.sim_llm.complete(messages, response_format)
 
-    async def stream(self, messages: list[dict]) -> AsyncIterator[str]:
-        return await self.sim_llm.stream(messages)
+    async def stream(
+        self, messages: list[dict], tools: Sequence[ToolSpec] | None = None
+    ) -> AsyncIterator[StreamEvent]:
+        return await self.sim_llm.stream(messages, tools)
 
     async def render(self, yaml_content: str) -> bytes:
         return await self.sim_pdf_render.render(yaml_content)

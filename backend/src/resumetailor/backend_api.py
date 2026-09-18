@@ -7,10 +7,10 @@ or PyMuPDF — only the three protocols in ``llm/port.py``,
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
-from resumetailor.llm.port import LLMPort
+from resumetailor.llm.port import LLMPort, StreamEvent, ToolSpec
 from resumetailor.pdf.port import PDFExtractPort
 from resumetailor.rendering.port import PDFRenderPort
 
@@ -33,8 +33,12 @@ class BackendAPI:
     ) -> str:
         return await self._llm.complete(messages, response_format)
 
-    async def stream(self, messages: list[dict[str, Any]]) -> AsyncIterator[str]:
-        return await self._llm.stream(messages)
+    async def stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: Sequence[ToolSpec] | None = None,
+    ) -> AsyncIterator[StreamEvent]:
+        return await self._llm.stream(messages, tools)
 
     async def render(self, yaml_content: str) -> bytes:
         return await self._pdf_render.render(yaml_content)

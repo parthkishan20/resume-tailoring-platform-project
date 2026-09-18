@@ -6,6 +6,7 @@ Async tests use @pytest.mark.anyio (anyio is installed; pytest-asyncio is not).
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 
 import pytest
@@ -344,6 +345,90 @@ def test_stub_backend_is_a_real_backend_api():
     """deps used to return the stub where a BackendAPI was declared."""
     from resumetailor.backend_api import BackendAPI, create_stub_backend
     assert isinstance(create_stub_backend(), BackendAPI)
+
+
+# ---------------------------------------------------------------------------
+# Task 3.3 — Tool-call simulation (D-33)
+#
+# Deterministic dispatch by trigger phrase, so `LLM_MOCK=true` (this same
+# class, run for real by the e2e stack) and the pytest suite exercise one
+# routing table rather than two. See `llm/stub.py`'s "Tool-call simulation"
+# section for why a fixed trigger phrase stands in for a real model's
+# judgment here.
+# ---------------------------------------------------------------------------
+
+from resumetailor.llm.port import ToolCall, ToolSpec
+from resumetailor.llm.stub import MOCK_TOOL_CALL_ID, MOCK_TOOL_TRIGGERS
+
+_ANY_TOOL = (
+    ToolSpec(name="noop", description="unused", parameters={"type": "object"}),
+)
+
+
+@pytest.mark.anyio
+async def test_simulator_stream_ignores_triggers_when_no_tools_are_offered():
+    """A trigger phrase alone does nothing: `tools` has to be non-empty too."""
+    sim = SimulatedBackendAPI()
+    events = [
+        e
+        async for e in await sim.stream(
+            [{"role": "user", "content": "please generate a tailored resume"}]
+        )
+    ]
+    assert events == [MOCK_CHAT_RESULT["text"]]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("phrase", list(MOCK_TOOL_TRIGGERS))
+async def test_simulator_stream_triggers_the_matching_tool(phrase: str):
+    expected_name, expected_arguments = MOCK_TOOL_TRIGGERS[phrase]
+    sim = SimulatedBackendAPI()
+
+    events = [
+        e
+        async for e in await sim.stream(
+            [{"role": "user", "content": f"Please {phrase} for me"}], tools=_ANY_TOOL
+        )
+    ]
+
+    assert events == [
+        ToolCall(
+            id=MOCK_TOOL_CALL_ID,
+            name=expected_name,
+            arguments=json.dumps(expected_arguments),
+        )
+    ]
+
+
+@pytest.mark.anyio
+async def test_simulator_stream_with_tools_and_no_matching_trigger_answers_in_text():
+    sim = SimulatedBackendAPI()
+    events = [
+        e
+        async for e in await sim.stream(
+            [{"role": "user", "content": "how are you today?"}], tools=_ANY_TOOL
+        )
+    ]
+    assert events == [MOCK_CHAT_RESULT["text"]]
+
+
+@pytest.mark.anyio
+async def test_simulator_stream_does_not_retrigger_once_a_tool_has_run():
+    """One tool call per turn (ADR 0005's fixed four-tool set), even on a
+    trigger phrase: once the conversation already carries a `role: "tool"`
+    message, the stub answers in text so a deterministic test's second round
+    always terminates the turn.
+    """
+    sim = SimulatedBackendAPI()
+    messages = [
+        {"role": "user", "content": "please generate a tailored resume"},
+        {"role": "assistant", "content": None, "tool_calls": []},
+        {"role": "tool", "tool_call_id": "call-1", "content": "done"},
+    ]
+
+    events = [e async for e in await sim.stream(messages, tools=_ANY_TOOL)]
+
+    assert events == [MOCK_CHAT_RESULT["text"]]
 
 
 # ---------------------------------------------------------------------------
