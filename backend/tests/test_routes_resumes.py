@@ -35,6 +35,59 @@ async def test_generate_resume_sse_stream(client, sim, db_path):
 
 
 @pytest.mark.anyio
+async def test_generate_stream_progress_messages_are_the_wire_contract(client, sim, db_path):
+    """The three strings the frontend matches on, in order.
+
+    Task 2.5 moved the pipeline into `domain.tailoring`, which yields `Stage`
+    members; the message text is mapped back here, in the route. This pins that
+    the mapping still produces exactly what it produced before the move.
+    """
+    from resumetailor.db.repositories import upsert_master_resume
+    import asyncio
+    await asyncio.to_thread(upsert_master_resume, db_path, MOCK_GENERATION_RESULT_YAML)
+
+    sim.sim_llm.set_complete_response(json.dumps({"yaml_content": MOCK_GENERATION_RESULT_YAML}))
+    sim.sim_pdf_render.set_response(b"%PDF-1.4 test")
+
+    response = await client.post(
+        "/api/resumes/stream",
+        json={"job_description": "Software Engineer at Mock Corp"},
+    )
+    assert response.status_code == 200
+    progress = [
+        json.loads(l.replace("data: ", ""))["message"]
+        for l in response.text.split("\n")
+        if l.startswith("data:") and "message" in l
+    ]
+    assert progress == MOCK_GENERATION_PROGRESS
+
+
+@pytest.mark.anyio
+async def test_generate_stream_stores_the_document_that_was_rendered(client, sim, db_path):
+    """D-04 on the generation path: the stored YAML is the rendered YAML."""
+    from resumetailor.db.repositories import upsert_master_resume, get_resume
+    import asyncio
+    await asyncio.to_thread(upsert_master_resume, db_path, MOCK_GENERATION_RESULT_YAML)
+
+    sim.sim_llm.set_complete_response(json.dumps({"yaml_content": MOCK_GENERATION_RESULT_YAML}))
+    sim.sim_pdf_render.set_response(b"%PDF-1.4 test")
+
+    response = await client.post(
+        "/api/resumes/stream",
+        json={"job_description": "Software Engineer at Mock Corp"},
+    )
+    done = next(
+        json.loads(l.replace("data: ", ""))
+        for l in response.text.split("\n")
+        if l.startswith("data:") and "result" in l
+    )
+    resume_id = done["result"]["id"]
+    row = await asyncio.to_thread(get_resume, db_path, resume_id)
+    assert row.yaml_content == sim.sim_pdf_render.last_yaml_content
+    assert row.pdf_path == f"{resume_id}.pdf"
+
+
+@pytest.mark.anyio
 async def test_generate_resume_sse_error_llm_auth(client, sim, db_path):
     from resumetailor.db.repositories import upsert_master_resume
     import asyncio
@@ -86,9 +139,143 @@ async def test_generate_injects_rules_into_prompts(client, sim, db_path):
 
 
 @pytest.mark.anyio
+async def test_generate_stream_without_a_master_resume(client, sim, db_path):
+    response = await client.post(
+        "/api/resumes/stream",
+        json={"job_description": "Software Engineer at Mock Corp"},
+    )
+    assert response.status_code == 200
+    error_data = next(
+        json.loads(l.replace("data: ", ""))
+        for l in response.text.split("\n")
+        if l.startswith("data:")
+    )
+    assert error_data == {"error": "No master resume found", "code": "NO_MASTER_RESUME"}
+    assert sim.sim_llm.complete_call_count == 0
+
+
+@pytest.mark.anyio
+async def test_generate_stream_render_failure_is_opaque(client, sim, db_path):
+    """D-53: a render failure carries the subprocess's whole output."""
+    from resumetailor.db.repositories import upsert_master_resume
+    import asyncio
+    from resumetailor.core.errors import RenderError
+    await asyncio.to_thread(upsert_master_resume, db_path, MOCK_GENERATION_RESULT_YAML)
+
+    leak = "rendercv failed (exit 1): Typst error at /app/backend/.venv/x.typ"
+    sim.sim_llm.set_complete_response(json.dumps({"yaml_content": MOCK_GENERATION_RESULT_YAML}))
+    sim.sim_pdf_render.set_error(RenderError(leak))
+
+    response = await client.post(
+        "/api/resumes/stream",
+        json={"job_description": "Software Engineer at Mock Corp"},
+    )
+    assert response.status_code == 200
+    error_data = next(
+        json.loads(l.replace("data: ", ""))
+        for l in response.text.split("\n")
+        if l.startswith("data:") and "RENDER_FAILED" in l
+    )
+    assert error_data == {"error": RenderError.client_message, "code": "RENDER_FAILED"}
+    assert leak not in response.text
+
+
+@pytest.mark.anyio
+async def test_generate_stream_unexpected_failure_says_nothing(client, sim, db_path):
+    """An exception that is not a domain error has no vetted message to send."""
+    from resumetailor.db.repositories import upsert_master_resume
+    import asyncio
+    from resumetailor.core.errors import BackendError
+    await asyncio.to_thread(upsert_master_resume, db_path, MOCK_GENERATION_RESULT_YAML)
+
+    sim.sim_llm.set_complete_error(ValueError("sqlite3.OperationalError: /app/db/app.db"))
+
+    response = await client.post(
+        "/api/resumes/stream",
+        json={"job_description": "Software Engineer at Mock Corp"},
+    )
+    assert response.status_code == 200
+    error_data = next(
+        json.loads(l.replace("data: ", ""))
+        for l in response.text.split("\n")
+        if l.startswith("data:") and "GENERATION_FAILED" in l
+    )
+    assert error_data == {
+        "error": BackendError.client_message,
+        "code": "GENERATION_FAILED",
+    }
+    assert "/app/db/app.db" not in response.text
+
+
+@pytest.mark.anyio
 async def test_get_resume_404(client):
     response = await client.get("/api/resumes/9999")
     assert response.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_render_route_normalizes_first(client, sim, db_path):
+    """D-57: the render-only path normalizes, like every other render path.
+
+    Before this, `POST /api/resumes/{id}/render` handed the stored YAML to the
+    renderer untouched, so a document that renders through the generation
+    pipeline or through `/api/master-resume/preview` could fail here.
+    """
+    from resumetailor.db.repositories import create_resume
+    import asyncio
+    stored = "cv:\n  name: Tester\n  contact:\n    email: tester@example.com\n"
+    r = await asyncio.to_thread(create_resume, db_path, "Test", "JD", stored)
+    sim.sim_pdf_render.set_response(b"%PDF-1.4 test")
+
+    response = await client.post(f"/api/resumes/{r.id}/render")
+    assert response.status_code == 200
+    rendered = sim.sim_pdf_render.last_yaml_content
+    assert rendered != stored
+    assert "contact:" not in rendered
+    assert "email: tester@example.com" in rendered
+
+
+@pytest.mark.anyio
+async def test_patch_refuses_yaml_that_will_not_render(client, db_path):
+    """D-04: a write path validates instead of storing and hoping."""
+    from resumetailor.db.repositories import create_resume, get_resume
+    import asyncio
+    r = await asyncio.to_thread(create_resume, db_path, "Test", "JD", "cv:\n  name: X\n")
+
+    response = await client.patch(
+        f"/api/resumes/{r.id}", json={"yaml_content": "cv:\n  name: X\n  email: nope\n"}
+    )
+    assert response.status_code == 422
+    assert "@-sign" in response.json()["detail"]
+    row = await asyncio.to_thread(get_resume, db_path, r.id)
+    assert row.yaml_content == "cv:\n  name: X\n", "the bad document was not stored"
+
+
+@pytest.mark.anyio
+async def test_patch_stores_valid_yaml_and_renames(client, db_path):
+    from resumetailor.db.repositories import create_resume
+    import asyncio
+    r = await asyncio.to_thread(create_resume, db_path, "Test", "JD", "cv:\n  name: X\n")
+
+    response = await client.patch(
+        f"/api/resumes/{r.id}",
+        json={"name": "Renamed", "yaml_content": "cv:\n  name: Y\n"},
+    )
+    assert response.status_code == 200
+    assert response.json()["name"] == "Renamed"
+    assert response.json()["yaml_content"] == "cv:\n  name: Y\n"
+
+
+@pytest.mark.anyio
+async def test_patch_a_name_alone_does_not_touch_the_document(client, db_path):
+    from resumetailor.db.repositories import create_resume
+    import asyncio
+    stored = "cv:\n  name: X\n  bogus_key: stored before D-04\n"
+    r = await asyncio.to_thread(create_resume, db_path, "Test", "JD", stored)
+
+    response = await client.patch(f"/api/resumes/{r.id}", json={"name": "Renamed"})
+    assert response.status_code == 200, "validation runs on the document, not the name"
+    assert response.json()["yaml_content"] == stored
 
 
 @pytest.mark.anyio

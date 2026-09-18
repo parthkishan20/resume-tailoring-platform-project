@@ -510,23 +510,69 @@ async def test_the_preview_route_does_not_leak_render_output(client, sim):
     assert leak not in response.text
 
 
+@pytest.mark.anyio
+async def test_provider_exception_text_does_not_reach_the_client(client, sim, caplog):
+    """D-53 on the streaming path, closed by task 2.5 for the two routes it owns.
+
+    The marker this test carried (``xfail(strict=True)``) is gone: both SSE
+    routes below now frame ``exc.client_message`` and log the detail, exactly
+    as ``error_response`` does for a non-streaming route.
+    ``test_chat_stream_still_leaks_provider_exception_text`` below is the same
+    assertion against the third streaming route, which is still open.
+    """
+    leak = "litellm.APIError: POST https://api.openai.com/v1/chat key=sk-xyz"
+    sim.sim_llm.set_complete_error(LLMUnavailableError(leak))
+
+    with caplog.at_level("ERROR"):
+        response = await client.post(
+            "/api/evaluate/stream",
+            json={"yaml_content": "cv:\n  name: T", "job_description": "jd"},
+        )
+
+    assert leak not in response.text
+    assert LLMUnavailableError.client_message in response.text
+    assert '"code": "LLM_UNAVAILABLE"' in response.text
+    assert any(
+        getattr(record, "error_detail", None) == leak for record in caplog.records
+    ), "the detail must be logged even though the client never sees it"
+
+
+@pytest.mark.anyio
+async def test_generation_stream_does_not_leak_provider_exception_text(
+    client, sim, caplog
+):
+    """The same guarantee on the generation stream, which errors mid-pipeline."""
+    leak = "litellm.APIError: POST https://api.openai.com/v1/chat key=sk-xyz"
+    await client.put("/api/master-resume", json={"yaml_content": "cv:\n  name: T"})
+    sim.sim_llm.set_complete_error(LLMUnavailableError(leak))
+
+    with caplog.at_level("ERROR"):
+        response = await client.post(
+            "/api/resumes/stream", json={"job_description": "jd"}
+        )
+
+    assert leak not in response.text
+    assert LLMUnavailableError.client_message in response.text
+    assert '"code": "LLM_UNAVAILABLE"' in response.text
+    assert any(
+        getattr(record, "error_detail", None) == leak for record in caplog.records
+    ), "the detail must be logged even though the client never sees it"
+
+
 @pytest.mark.xfail(
     strict=True,
     reason=(
-        "D-53 residual, recorded in the 2.4 report. The four SSE routes catch "
-        "domain errors themselves and put str(exc) in the frame, so they never "
-        "reach error_response. chat.py and evaluate.py are outside task 2.4's "
-        "file ownership; task 2.5 rewrites both and should use "
-        "exc.client_message there. When it does, this passes and xfail_strict "
-        "fails the build so the marker gets removed."
+        "D-53's remaining residual. `api/routers/chat.py` is the third "
+        "streaming route and was outside both task 2.4's and task 2.5's file "
+        "ownership, so it still puts str(exc) in the SSE error frame. Whoever "
+        "owns that file next replaces it with exc.client_message, at which "
+        "point this passes and xfail_strict fails the build so the marker gets "
+        "removed."
     ),
 )
 @pytest.mark.anyio
-async def test_provider_exception_text_does_not_reach_the_client(client, sim):
+async def test_chat_stream_still_leaks_provider_exception_text(client, sim):
     leak = "litellm.APIError: POST https://api.openai.com/v1/chat key=sk-xyz"
-    sim.sim_llm.set_complete_error(LLMUnavailableError(leak))
-    response = await client.post(
-        "/api/evaluate/stream",
-        json={"yaml_content": "cv:\n  name: T", "job_description": "jd"},
-    )
+    sim.sim_llm.set_stream_error(LLMUnavailableError(leak))
+    response = await client.post("/api/chat/stream", json={"message": "hi"})
     assert leak not in response.text
