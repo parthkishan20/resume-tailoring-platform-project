@@ -27,7 +27,7 @@ What is here:
   side effect of the tracker, not tracked independently, because the same
   count is also what the lifespan waits on during shutdown (see `main.py`).
   One count, two readers.
-* The four ``REAPER_*`` metrics — updated by `core/reaper.py` after every run,
+* The ``REAPER_*`` metrics — updated by `core/reaper.py` after every run,
   startup and periodic alike, so "is the reaper running" and "is it finding
   anything" are both answerable without grepping logs.
 """
@@ -154,4 +154,14 @@ REAPER_ROWS_MISSING_PDF = Gauge(
     "generated_resumes rows with pdf_path IS NULL and no matching file on "
     "disk, as of the last reaper run. Recoverable via POST "
     "/api/resumes/{id}/render; the reaper does not delete these.",
+)
+
+REAPER_ROWS_BROKEN_PDF_REFERENCE = Gauge(
+    "resumetailor_reaper_rows_broken_pdf_reference",
+    "generated_resumes rows whose pdf_path is set but the file it names does "
+    "not exist on disk, as of the last reaper run (D-81) -- a row with a "
+    "pdf_path used to be trusted without re-checking the file still exists, "
+    "so a reference broken by a delete-pass race stayed invisible to every "
+    "later pass. Recoverable the same way a missing-pdf row is, via POST "
+    "/api/resumes/{id}/render.",
 )

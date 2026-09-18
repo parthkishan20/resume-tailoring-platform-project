@@ -87,6 +87,17 @@ class Settings(BaseSettings):
     # crowds `PDFS_DIR`'s directory listing in the log.
     REAPER_INTERVAL_S: float = Field(default=3600.0, gt=0)
 
+    # D-81: the reaper's row scan and its directory-delete pass are two
+    # separate reads, seconds apart, of state a concurrent `store_tailored_
+    # resume` call can move between them -- a file that did not exist at row-
+    # scan time can exist by delete-pass time, without ever entering the
+    # `referenced` set built from the earlier snapshot. A grace period keeps
+    # any `*.pdf` file younger than this many seconds out of the delete pass
+    # entirely, regardless of what the snapshot says, which is longer than a
+    # real render (`rendering/config.py`'s `RENDER_TIMEOUT_S`, default 30s)
+    # ever takes.
+    REAPER_DELETE_GRACE_S: float = Field(default=300.0, gt=0)
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

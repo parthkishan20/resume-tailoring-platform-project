@@ -16,9 +16,22 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+import resumetailor.core.reaper as reaper_module
+from resumetailor.core.config import get_settings
 from resumetailor.core.reaper import ReaperReport, reap_orphans
 from resumetailor.db.repositories import create_resume, get_resume, update_resume
 from resumetailor.db.repositories.resumes import MAX_PAGE_SIZE
+
+
+@pytest.fixture(autouse=True)
+def _no_delete_grace(monkeypatch: pytest.MonkeyPatch) -> None:
+    """D-81's grace period exists to protect a file that might still be
+    mid-write in production; every file this suite creates is already
+    complete, so there is nothing for the grace period to protect here and
+    every deletion-path test would otherwise need to sleep past it."""
+    monkeypatch.setattr(get_settings(), "REAPER_DELETE_GRACE_S", 0.0)
 
 
 def test_relinks_a_row_whose_pdf_was_written_but_not_recorded(
@@ -77,7 +90,12 @@ def test_leaves_a_consistent_row_and_file_untouched(db_path: str, pdfs_dir: str)
 
     report = reap_orphans(db_path, pdfs_dir)
 
-    assert report == ReaperReport(rows_relinked=0, rows_missing_pdf=0, files_deleted=0)
+    assert report == ReaperReport(
+        rows_relinked=0,
+        rows_missing_pdf=0,
+        rows_broken_pdf_reference=0,
+        files_deleted=0,
+    )
     assert pdf_path.exists()
 
 
@@ -85,7 +103,12 @@ def test_empty_database_and_missing_pdfs_dir_is_a_no_op(db_path: str, tmp_path: 
     """The common case, on every boot: nothing to reconcile, no directory yet."""
     report = reap_orphans(db_path, str(tmp_path / "never-created"))
 
-    assert report == ReaperReport(rows_relinked=0, rows_missing_pdf=0, files_deleted=0)
+    assert report == ReaperReport(
+        rows_relinked=0,
+        rows_missing_pdf=0,
+        rows_broken_pdf_reference=0,
+        files_deleted=0,
+    )
 
 
 def test_pages_past_one_page_of_resumes(db_path: str, pdfs_dir: str):
@@ -96,3 +119,65 @@ def test_pages_past_one_page_of_resumes(db_path: str, pdfs_dir: str):
     report = reap_orphans(db_path, pdfs_dir)
 
     assert report.rows_missing_pdf == MAX_PAGE_SIZE + 5
+
+
+# ── D-81: the delete-pass TOCTOU race ────────────────────────────────────────
+
+
+def test_a_file_younger_than_the_grace_period_is_never_deleted(
+    db_path: str, pdfs_dir: str, monkeypatch: pytest.MonkeyPatch
+):
+    """A file this fresh might belong to a write still in progress -- the
+    grace period keeps it out of the delete pass regardless of what the row
+    scan found, independent of the fresh-recheck path below."""
+    monkeypatch.setattr(get_settings(), "REAPER_DELETE_GRACE_S", 9999.0)
+    Path(pdfs_dir, "9999.pdf").write_bytes(b"%PDF-1.4 too fresh to touch")
+
+    report = reap_orphans(db_path, pdfs_dir)
+
+    assert report.files_deleted == 0
+    assert Path(pdfs_dir, "9999.pdf").exists()
+
+
+def test_a_row_with_a_broken_pdf_reference_is_detected_not_trusted(
+    db_path: str, pdfs_dir: str
+):
+    """A row's own `pdf_path` used to be trusted with no check that the file
+    still exists -- a broken reference (from this reaper's own race, or any
+    other cause) was invisible forever. Now it is counted, and the row is
+    left alone rather than silently treated as healthy."""
+    row = create_resume(db_path, "Resume — Broken", "Broken JD", "cv:\n  name: D\n")
+    update_resume(db_path, row.id, pdf_path=f"{row.id}.pdf")
+    # No such file is ever written to pdfs_dir.
+
+    report = reap_orphans(db_path, pdfs_dir)
+
+    assert report.rows_broken_pdf_reference == 1
+    assert report.rows_relinked == 0
+    assert report.rows_missing_pdf == 0
+    reloaded = get_resume(db_path, row.id)
+    assert reloaded is not None
+    assert reloaded.pdf_path == f"{row.id}.pdf"  # untouched, just reported
+
+
+def test_a_file_linked_after_the_row_scan_survives_the_fresh_recheck(
+    db_path: str, pdfs_dir: str, monkeypatch: pytest.MonkeyPatch
+):
+    """The exact race D-81 names: a row scan that ran before a concurrent
+    `store_tailored_resume` call finished would build a `referenced` set that
+    does not include the file that call just linked. Simulated here by
+    forcing the row scan to see nothing, so the file the delete pass finds
+    is "unreferenced" by the stale snapshot alone -- and must be saved by
+    the fresh, direct database check immediately before deletion, not by the
+    snapshot."""
+    row = create_resume(db_path, "Resume — Raced", "Raced JD", "cv:\n  name: E\n")
+    pdf_path = Path(pdfs_dir) / f"{row.id}.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 linked just now")
+    update_resume(db_path, row.id, pdf_path=f"{row.id}.pdf")
+
+    monkeypatch.setattr(reaper_module, "_all_resume_summaries", lambda _db_path: [])
+
+    report = reap_orphans(db_path, pdfs_dir)
+
+    assert report.files_deleted == 0
+    assert pdf_path.exists()
