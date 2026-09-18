@@ -1,6 +1,5 @@
 """The LLM provider boundary.
 
-Empty by design. Task 1.3 moves `LiteLLMAdapter` here as `litellm_adapter.py`,
-the `LLMPort` protocol as `port.py`, and `resumetailor/simulator.py` as
-`stub.py`; see PLAN.md section 3.2.
+``port.py`` is the protocol, ``litellm_adapter.py`` is the real provider, and
+``stub.py`` is the deterministic one the tests and ``LLM_MOCK`` run against.
 """

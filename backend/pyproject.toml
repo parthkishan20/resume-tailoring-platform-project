@@ -10,6 +10,10 @@ dependencies = [
     "pymupdf>=1.24.0",
     "pydantic-settings>=2.3.0",
     "python-multipart>=0.0.9",
+    # Both are imported directly by resume_schema/ and arrived only transitively
+    # through rendercv until task 1.3 declared them (D-19).
+    "phonenumbers>=9.0.0",
+    "pyyaml>=6.0.0",
 ]
 
 [dependency-groups]

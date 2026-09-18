@@ -1,7 +1,7 @@
 import json
 import pytest
-from resumetailor.simulator import MOCK_GENERATION_RESULT_YAML, MOCK_GENERATION_PROGRESS
-from resumetailor.ports import LLMAuthError
+from resumetailor.llm.stub import MOCK_GENERATION_RESULT_YAML, MOCK_GENERATION_PROGRESS
+from resumetailor.core.errors import LLMAuthError
 
 
 @pytest.mark.anyio

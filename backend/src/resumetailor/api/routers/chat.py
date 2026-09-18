@@ -11,7 +11,7 @@ from resumetailor.backend_api import BackendAPI
 from resumetailor.core.config import get_settings
 from resumetailor.database import get_chat_messages, add_chat_message, clear_chat, get_system_prompt
 from resumetailor.deps import get_backend
-from resumetailor.ports import LLMAuthError, LLMUnavailableError
+from resumetailor.core.errors import LLMAuthError, LLMUnavailableError
 
 router = APIRouter()
 

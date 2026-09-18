@@ -1905,9 +1905,11 @@ source = { virtual = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "litellm" },
+    { name = "phonenumbers" },
     { name = "pydantic-settings" },
     { name = "pymupdf" },
     { name = "python-multipart" },
+    { name = "pyyaml" },
     { name = "rendercv", extra = ["full"] },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -1930,9 +1932,11 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.111.0" },
     { name = "litellm", specifier = ">=1.40.0" },
+    { name = "phonenumbers", specifier = ">=9.0.0" },
     { name = "pydantic-settings", specifier = ">=2.3.0" },
     { name = "pymupdf", specifier = ">=1.24.0" },
     { name = "python-multipart", specifier = ">=0.0.9" },
+    { name = "pyyaml", specifier = ">=6.0.0" },
     { name = "rendercv", extras = ["full"], specifier = ">=2.8" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30.0" },
 ]
