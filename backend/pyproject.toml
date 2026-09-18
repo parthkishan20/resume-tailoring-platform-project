@@ -17,7 +17,273 @@ dev = [
     "pytest>=8.2.0",
     "anyio[asyncio]>=4.0.0",
     "httpx>=0.27.0",
+    # Quality gates. Pinned exactly: a gate that drifts is not a gate.
+    "ruff==0.16.8",
+    "mypy==2.3.1",
+    "pytest-cov==7.1.0",
+    "coverage==7.16.1",
+    "types-PyYAML==6.0.12.20260906",
+    "pre-commit==4.6.2",
+    # Shuffles test order on every run so an order-dependent test cannot hide
+    # again the way D-37 did. Closes B-05, raised by task 0.10.
+    "pytest-randomly==5.0.0",
 ]
+
+# ---------------------------------------------------------------------------
+# Lint and format — `make lint` / `make fmt`
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+src = ["."]
+extend-exclude = [".venv", "static", "out"]
+
+[tool.ruff.lint]
+# The target rule set. Nothing here is aspirational: every rule is enforced on
+# every file that is not named in `per-file-ignores` below, and on every file
+# added from now on. The legacy exemptions are itemised, counted, and owned by
+# task 0.13.
+select = [
+    "F",     # pyflakes
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "I",     # isort
+    "N",     # pep8-naming
+    "UP",    # pyupgrade
+    "B",     # flake8-bugbear
+    "A",     # flake8-builtins
+    "C4",    # flake8-comprehensions
+    "C90",   # mccabe complexity
+    "SIM",   # flake8-simplify
+    "RUF",   # ruff-specific
+    "ASYNC", # flake8-async — blocking calls on the event loop (see D-05)
+    "S",     # flake8-bandit
+    "T20",   # flake8-print
+    "PTH",   # flake8-use-pathlib
+    "RET",   # flake8-return
+    "ARG",   # flake8-unused-arguments
+    "ERA",   # eradicate — commented-out code
+    "PIE",   # flake8-pie
+    "ISC",   # implicit str concat
+    "G",     # flake8-logging-format
+    "LOG",   # flake8-logging
+    "DTZ",   # flake8-datetimez — naive datetimes (see D-09)
+    "EM",    # flake8-errmsg
+    "TRY",   # tryceratops
+    "BLE",   # flake8-blind-except (see D-52)
+    "PT",    # flake8-pytest-style
+    "SLF",   # private member access
+    "Q",     # flake8-quotes
+    "INP",   # implicit namespace packages
+    "FBT",   # boolean trap
+    "TID",   # flake8-tidy-imports — absolute imports, per AGENTS.md section 9
+    "PL",    # pylint
+]
+ignore = [
+    "B008",    # FastAPI expresses dependencies as `= Depends(...)` defaults. Framework idiom, permanent.
+    "ISC001",  # Conflicts with the formatter; ruff emits a warning if both are on.
+    "PLC0415", # Imports are deferred inside functions on purpose here: litellm, pymupdf and
+               # rendercv each cost about a second to import and are not needed on every path.
+               # Seven call sites already carry an inline `# noqa: PLC0415` saying exactly that.
+]
+
+[tool.ruff.lint.per-file-ignores]
+# --- LEGACY EXEMPTIONS -----------------------------------------------------
+# `backend/app/` is the pre-restructure package. Wave 1.1 moves it to
+# `backend/src/resumetailor/`, at which point these lines are deleted rather
+# than carried across: nothing under `src/` is exempt from anything.
+# 153 findings are suppressed here. Task 0.13 clears them.
+"app/**" = [
+    "RUF100",   # 7  — the inline `# noqa: PLC0415` directives read as unused now that PLC0415
+                #      is globally ignored. Removing the directives is a source edit; task 0.13.
+    "TID252",   # 47 — relative imports; absolute `resumetailor.*` arrives with the src-layout in 1.1
+    "I001",     # 14 — unsorted imports; `ruff check --fix` clears these mechanically
+    "E501",     # 12 — long lines
+    "RUF001",   # 11 — ambiguous unicode in strings
+    "TRY003",   # 6  — long messages at raise sites; the domain exception hierarchy lands in 1.1
+    "ARG001",   # 6  — unused function arguments
+    "F401",     # 6  — unused imports
+    "BLE001",   # 5  — blind `except Exception` (this is D-52, fixed in 1.1, not here)
+    "UP035",    # 4  — deprecated typing imports
+    "EM102",    # 4  — f-string passed straight to an exception
+    "E702",     # 3  — statements joined by a semicolon
+    "PLR0913",  # 3  — too many arguments
+    "PLR0917",  # 3  — too many positional arguments
+    "RET504",   # 3  — assign-then-return
+    "ARG002",   # 3  — unused method arguments
+    "EM101",    # 2  — raw string passed straight to an exception
+    "S608",     # 2  — SQL built by string construction (D-54 territory)
+    "E741",     # 1  — ambiguous variable name
+    "ASYNC240", # 1  — blocking path call in an async function (this is D-05)
+    "C901",     # 1  — complex function
+    "PLR2004",  # 1  — magic value in a comparison
+    "B904",     # 1  — `raise` inside `except` without `from`
+    "PLR0912",  # 1  — too many branches
+    "PLR0915",  # 1  — too many statements
+    "TRY300",   # 1  — `return` in `try` rather than `else`
+]
+
+# --- PERMANENT TEST EXEMPTIONS ---------------------------------------------
+# These are properties of test code, not debt. They stay after task 0.13.
+"tests/**" = [
+    "S101",    # pytest asserts
+    "PLR2004", # literal expected values are the point of an assertion
+    "SLF001",  # tests reach into private helpers deliberately
+    "ARG001",  # fixtures are requested by name and often not referenced
+    "ARG002",
+    "INP001",  # test packages are not importable modules
+    # --- legacy, cleared by task 0.13 (149 of the below are S101, already permanent) ---
+    "I001",    # 25 — unsorted imports
+    "E741",    # 10 — ambiguous variable name
+    "E702",    # 10 — semicolons
+    "E501",    # 9  — long lines
+    "F401",    # 6  — unused imports
+    "E402",    # 4  — import not at top of file
+    "UP035",   # 1
+    "SIM117",  # 1  — nested `with`
+    "PTH110",  # 1  — `os.path.exists`
+    "PTH108",  # 1  — `os.unlink`
+    "PT018",   # 1  — composite assertion
+    "F811",    # 1  — redefinition
+]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "tests"]
+
+[tool.ruff.format]
+docstring-code-format = true
+# --- LEGACY EXEMPTIONS -----------------------------------------------------
+# `ruff format --check` is enforced on every file NOT in this list, and on
+# every file added from now on. These 20 predate the formatter and reformatting
+# them is a source change this task does not own. Task 0.13 runs `make fmt`
+# once and deletes this block.
+exclude = [
+    "app/adapters.py",
+    "app/backend_api.py",
+    "app/database.py",
+    "app/deps.py",
+    "app/main.py",
+    "app/routes/chat.py",
+    "app/routes/evaluate.py",
+    "app/routes/resumes.py",
+    "app/simulator.py",
+    "app/yaml_utils.py",
+    "tests/conftest.py",
+    "tests/helpers/simulator.py",
+    "tests/test_database.py",
+    "tests/test_llm.py",
+    "tests/test_rendercv_validation.py",
+    "tests/test_routes_chat.py",
+    "tests/test_routes_evaluate.py",
+    "tests/test_routes_master_resume.py",
+    "tests/test_routes_resumes.py",
+    "tests/test_routes_rules.py",
+]
+
+# ---------------------------------------------------------------------------
+# Types — `make typecheck`
+# ---------------------------------------------------------------------------
+
+[tool.mypy]
+python_version = "3.12"
+files = ["app"]
+strict = true
+warn_unused_configs = true
+warn_unreachable = true
+show_error_codes = true
+pretty = true
+# Every relaxation below must be an explicit override with a reason. There is
+# no global loosening of `strict`.
+
+[[tool.mypy.overrides]]
+# No stubs are published for these, and none of them is worth a hand-written one.
+module = ["rendercv.*", "yaml", "litellm.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# --- LEGACY EXEMPTIONS ---
+# `--strict` on `app/` produces 88 errors. 84 of them are these three codes:
+# bare `dict`/`list` generics (39), unannotated defs (33), and calls into
+# unannotated defs (12). They are annotation debt, not bugs, and the modules
+# carrying them are rewritten in wave 1.1 under `src/resumetailor/`. Every
+# other strict check — including the four real findings pinned below — stays
+# on. Task 0.14 clears these.
+module = ["app.*"]
+disable_error_code = ["type-arg", "no-untyped-def", "no-untyped-call"]
+
+# The remaining four are genuine and each is already a registered defect.
+# They are pinned to one module and one error code so that the same class of
+# bug in any other module still fails the build.
+[[tool.mypy.overrides]]
+# D-59: provider `content` is `str | None` on a refusal and flows into a
+# function declared to return `str`. Also a pymupdf stub gap: `Document` is
+# iterable at runtime but the shipped stub does not say so.
+module = ["app.adapters"]
+disable_error_code = ["no-any-return", "attr-defined"]
+
+[[tool.mypy.overrides]]
+# `SimulatedBackendAPI` does not structurally satisfy the `BackendAPI` port.
+# Real; fixed when the port boundary is rebuilt in wave 1.1.
+module = ["app.deps"]
+disable_error_code = ["return-value"]
+
+[[tool.mypy.overrides]]
+# An `Optional` return is handed to `asyncio.to_thread` where a non-optional
+# is expected. Real; part of D-20 (partial-failure orphans).
+module = ["app.routes.resumes"]
+disable_error_code = ["arg-type"]
+
+# ---------------------------------------------------------------------------
+# Tests and coverage — `make test`
+# ---------------------------------------------------------------------------
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# `backend/` is not an installed package yet, so `app` is importable only
+# because it sits on sys.path. Wave 1.1 moves the code under `src/` and
+# installs it, at which point this line goes and `--import-mode=importlib`
+# becomes the right default.
+pythonpath = ["."]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "-ra",
+    "--cov=app",
+    "--cov-report=term-missing:skip-covered",
+    "--cov-report=xml",
+    "--cov-fail-under=79",
+]
+xfail_strict = true
+filterwarnings = ["default"]
+markers = [
+    "slow: takes more than a second; excluded from the pre-commit run",
+    "integration: crosses a process or filesystem boundary",
+]
+
+[tool.coverage.run]
+branch = false
+source = ["app"]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+# MEASURED, NOT ASPIRATIONAL. The suite covers 79.68% of `app/` today
+# (89 tests, 989 statements, 201 uncovered). The floor is set one point below
+# that so the gate fails on a regression and not on rounding.
+# AGENTS.md section 8 requires 85% on `domain/`, `services/` and `db/`.
+# Those packages do not exist yet. Task 3.6 creates them and raises this
+# number; raising it here would only produce a build that cannot go green.
+fail_under = 79
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "@(abc\\.)?abstractmethod",
+]
+
+[tool.coverage.xml]
+output = "coverage.xml"

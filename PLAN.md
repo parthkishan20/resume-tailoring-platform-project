@@ -305,10 +305,13 @@ land first, as small isolated changes, before any restructuring begins.
 **0.B — Gates**
 
 - [x] **0.7** `platform` — Purge stale generated directories; untrack `tsconfig.tsbuildinfo`; settle the `.superpowers` policy; `git gc` (D-62). *Done 2026-09-18. Deviation: nothing was deleted from disk. The stale directories (`.playwright-mcp/`, both `.pytest_cache/`, `frontend/.next/`, stray `.DS_Store`) are all ignored now, and task 0.5's `.dockerignore` already excludes every one of them from the build context, so deleting regenerable caches while other agents are running tests against them buys nothing.*
-- [ ] **0.8** `platform` — ruff, mypy, eslint, prettier, pre-commit, `Makefile` with a `check` target (D-38)
-- [ ] **0.9** `platform` — CI skeleton: lint, typecheck, unit tests, gitleaks on every push (D-38)
+- [x] **0.8** `platform` — ruff, mypy, eslint, prettier, pre-commit, `Makefile` with a `check` target (D-38). *Done 2026-09-18. `make check` runs ruff check, ruff format --check, eslint, prettier --check, mypy, tsc --noEmit, pytest (coverage floor 79%) and jest, and is green. Every gate is configured at the level the existing code passes today; each relaxation is itemised in the config file with a finding count and the task that removes it. Three follow-ups registered below as 0.13, 0.14 and 0.15. Also closes B-05: `pytest-randomly==5.0.0` is in the dev group and the suite passes five consecutive randomised runs.*
+- [x] **0.9** `platform` — CI skeleton: lint, typecheck, unit tests, gitleaks on every push (D-38). *Done 2026-09-18. `.github/workflows/ci.yml`: three parallel jobs (backend, frontend, gitleaks) plus one aggregate `ci` check to point branch protection at. No Docker, no LLM call, no API key — `LLM_MOCK=1` is set for the whole workflow. gitleaks runs as the pinned v8.30.1 release binary rather than `gitleaks-action`, which needs a licence key on organization accounts; it scans both the working tree and the full history. Verified locally: history is clean across all 52 commits, and a `git archive` of `HEAD` (what CI actually checks out) is clean.*
 - [x] **0.10** `qa-unit` — Fix the settings-cache leak so tests pass in isolation and in any order (D-37). *Done 2026-09-18. 89/89 pass in file order, in reverse order, under five `pytest-randomly` seeds, and each test passes run alone. No test turned out to be genuinely broken once the leak was closed. Deviation: `pytest-randomly` was verified from a scratch install rather than added to `backend/pyproject.toml`, which task 0.8 owns — see the note in §6.*
 - [x] **0.11** `orchestrator` — Fold all six audit reports into §2.1; publish them to `docs/reports/`
+- [ ] **0.13** `platform` — Clear the backend lint and format debt that task 0.8 had to exempt. Run `make fmt` (`ruff format` + `ruff check --fix`) across `backend/`, then delete the `[tool.ruff.format] exclude` list (20 files) and the `[tool.ruff.lint.per-file-ignores]` `"app/**"` block (26 codes, 153 findings) and the legacy half of the `"tests/**"` block (12 codes, 153 findings). Roughly half the findings are mechanically auto-fixable; the rest are one-line edits. **Do this before wave 1 starts**, not after: every one of these files is rewritten in wave 1.1, and a formatting pass tangled up with a restructure is a diff nobody can review. No other wave-0 agent owns backend Python, so it can start immediately.
+- [ ] **0.14** `platform` — Clear the mypy `--strict` debt that task 0.8 had to exempt: 88 errors in `backend/app/`, of which 84 are annotation debt in three codes (`type-arg` 39, `no-untyped-def` 33, `no-untyped-call` 12). The remaining four are real and each is already a registered defect — see the itemised overrides in `backend/pyproject.toml`. Lower value than 0.13 and it overlaps heavily with wave 1.1's rewrite, so it is reasonable to fold this into 1.1 rather than run it separately; the decision is the orchestrator's.
+- [ ] **0.15** `platform` + `frontend-shell` — Clear the frontend lint and format debt that task 0.8 had to exempt. Run `npm run format` across `frontend/`, then delete the legacy block from `frontend/.prettierignore` (20 files) and the `src/{components,lib,app}/**` override from `frontend/.eslintrc.js` (7 rules). Three of the seven rules close with wave 2.2 (D-40, D-60) and should stay exempt until then, but `no-unused-vars` is one dead import in `ResumeListPanel.tsx` and should come back now. **`src/__tests__/WorkstationShell.test.tsx` and `src/__tests__/api.test.ts` are new code** added by task 0.1 while 0.8 was in flight; they are on the prettier ignore list only so the gate could go green in the same commit that introduced it, and they should be the first two entries removed.
 
 ### Wave 1 — Foundations (6 parallel)
 
@@ -319,7 +322,30 @@ land first, as small isolated changes, before any restructuring begins.
 - [ ] **1.5** `qa-unit` — Hermetic harness: ephemeral DB per test, deterministic LLM stub, dynamic ports, no network and no API key required
 - [ ] **1.6** `docs` — `ARCHITECTURE.md`, `DEPLOYMENT.md`, `CONTRIBUTING.md`, ADRs 0001-0005; archive the planning tree; retake the screenshots after wave 3 (D-61)
 
-**Integration point I1.** Merge order 1.1 → 1.2 → 1.3, then 1.4, 1.5, 1.6 in any order.
+**Wave 1 is not actually six-way parallel. Resequenced 2026-09-18, before launch.**
+
+The original plan called all six independent. They are not, and running them together would have
+produced three agents restructuring the same backend tree from three directions:
+
+- 1.1 moves `backend/app/` to `backend/src/resumetailor/`. 1.2 splits `database.py` and 1.3 splits
+  `yaml_utils.py` and `adapters.py` — *files that 1.1 is moving*. Built in parallel worktrees, 1.2 and
+  1.3 would each be written against a layout that no longer exists by the time they merge.
+- 1.5 owns `backend/tests/`, which 1.1 also relocates.
+- 1.1 needs `backend/pyproject.toml` and 1.4 needs `frontend/package.json`, both of which task 0.8
+  still holds.
+
+Actual order, by real dependency rather than by wish:
+
+| Batch | Tasks | Gate |
+|---|---|---|
+| 1-a | **1.6** docs | none, starts immediately |
+| 1-b | **1.1** backend-core, **1.4** design-system | task 0.8 merged (releases the two manifests) |
+| 1-c | **1.2** data, **1.3** rendering, **1.5** qa-unit | 1.1 merged (the new layout exists to build into) |
+
+Peak parallelism is three, not six. On a codebase this size that is the honest ceiling: the backend is
+3,300 lines and most of it moves in 1.1, so widening the fan-out buys contention, not speed.
+
+**Integration point I1.** After 1-c. Runs full `make check`. Blocks wave 2 on green.
 
 ### Wave 2 — Product surfaces (5 parallel)
 
@@ -375,7 +401,7 @@ land first, as small isolated changes, before any restructuring begins.
 | B-02 | 1.3 | `planning/master-resume.yaml` does not conform to the schema its own import prompt specifies: all nine certifications use `company`/`position` keys, producing 18 warnings per render that blame the LLM for the document's own shape. Needs a decision: fix the document, or widen the normalizer. | User |
 | B-03 | 2.4 | **Still open.** The deployment target is undecided, so the auth model cannot be. Mitigated rather than solved: task 2.4 first restricts the host-side port publish to loopback, which removes the exposure without guessing at the wrong auth design. Revisit before any deploy beyond this machine. | User: where does this actually run? |
 | ~~B-04~~ | 3.3 | **Cleared 2026-09-18.** Scope decided: fixed four-tool action set. See D8. | — |
-| B-05 | 0.8 | `pytest-randomly` is not declared anywhere. Task 0.10's order-independence proof ran it from a scratch install, so nothing stops the next order-dependent fixture from landing unnoticed. It belongs in `backend/pyproject.toml`'s dev group (and in CI), which task 0.8 owns — 0.10 owns only `backend/tests/**`. | `platform`, in task 0.8 |
+| ~~B-05~~ | 0.8 | **Cleared 2026-09-18.** `pytest-randomly==5.0.0` is in `backend/pyproject.toml`'s dev group, so every local and CI run shuffles test order and prints its seed. Five consecutive randomised runs: 89 passed, coverage 79.68% each time. | — |
 
 ---
 
@@ -392,3 +418,5 @@ land first, as small isolated changes, before any restructuring begins.
 | 2026-09-18 | — | `orchestrator` | `AGENTS.md`, `PLAN.md`, and `docs/design/DESIGN-SYSTEM.md` created |
 | 2026-09-18 | 0.10 | `qa-unit` | Backend suite is order-independent (D-37). A single autouse `isolated_settings` fixture in `backend/tests/conftest.py` now gives every test its own temp `DB_PATH` and `PDFS_DIR` and clears both `get_settings` and `deps._backend` on entry **and** on exit; the 21 per-test `cache_clear()` calls that leaked a `Settings` pointing at a deleted `tmp_path` into the next test are gone. New `db_path`/`pdfs_dir` fixtures replace the hand-rolled `monkeypatch.setenv` + `init_db` preamble in five modules, and `client` now depends on `db_path` because httpx's `ASGITransport` never runs the lifespan that would create the database. No assertion weakened or removed. 89/89 pass in file order, reverse order, five random seeds, and individually |
 | 2026-09-18 | 0.7 | `platform` | Repo hygiene (D-62). `frontend/tsconfig.tsbuildinfo` (99 KB build cache) untracked and ignored via `*.tsbuildinfo`. `.superpowers` policy settled: the 19 markdown briefs and reports are preserved under `docs/archive/superpowers-sdd/` with a README recording their provenance, the two that were tracked (`t2-llm-report.md`, `t6-tester-report.md`) are untracked, and `.superpowers/` is ignored as the agent scratch directory it is — the multi-megabyte `review-*.diff`/`.txt` dumps were not archived, being mechanical diffs of commits still in history. `.gitignore` extended to cover `tests/e2e/` Playwright output ahead of the `test/` → `tests/e2e/` move, and to cover `coverage.xml`, `.coverage.*`, `.ruff_cache/` and `.eslintcache` — artefacts task 0.8's tooling began producing mid-wave, none of which were ignored. `git gc`: 534 loose objects / 4.38 MiB → one pack of 528 objects / 2.19 MiB |
+| 2026-09-18 | 0.8 | `platform` | Quality gates exist (D-38). `make check` is the single command: ruff check, ruff format --check, eslint, prettier --check, mypy, tsc --noEmit, pytest with a coverage floor, jest — green, with `make` defaulting to `help`. Backend gets ruff (34 rule groups, `line-length = 88`) and mypy `strict = true` in `backend/pyproject.toml`; frontend gets eslint on `recommended-type-checked` plus prettier. Every tool pinned exactly. `--passWithNoTests` removed from the frontend test script, so deleting the frontend tests now fails the build. Coverage floor set at **79%**, the measured level (79.68%, 89 tests, 989 statements) — AGENTS.md §8's 85% is task 3.6's, and a floor the code cannot meet is a broken build, not a gate. `pytest-randomly==5.0.0` added, closing B-05. Pre-commit wires the same tools and versions: fast gates on commit, mypy/eslint/tsc/pytest/jest on push, gitleaks on both, conventional-commit check on the message. **No source file was touched**: every gate is configured at the level the existing code passes today and each relaxation is itemised in the config with a finding count and an owning task — 153 backend lint findings and 20 unformatted backend files (task 0.13), 88 mypy `--strict` errors of which 84 are annotation debt (task 0.14), 7 eslint rules and 20 unformatted frontend files (task 0.15) |
+| 2026-09-18 | 0.9 | `platform` | CI exists (D-38). `.github/workflows/ci.yml` on every push, every PR and manual dispatch: `backend` (uv sync --locked, ruff, ruff format, mypy, pytest, coverage artefact), `frontend` (npm ci, eslint, prettier, tsc, jest, next build), `secrets` (gitleaks on the working tree and on all history), and one aggregate `ci` job to point branch protection at. Runs the same tools and versions as `make check`, so local green means CI green. No Docker, no LLM call, no API key: `LLM_MOCK=1` is set workflow-wide. `uv sync --locked` fails if `uv.lock` has drifted from `pyproject.toml`, so a dependency cannot be added without its lockfile. gitleaks is the pinned v8.30.1 release binary rather than `gitleaks-action`, which requires a licence key on organization accounts. Verified locally: history clean across 52 commits, and `git archive HEAD` — what CI checks out — clean |

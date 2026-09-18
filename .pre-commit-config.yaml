@@ -1,0 +1,122 @@
+# Pre-commit hooks.
+#
+# Same tools, same versions, same configuration as `make check` and CI. What
+# runs here is a subset: the fast, file-scoped gates. The slow whole-project
+# gates (mypy, pytest, jest, tsc) run on push, so a commit stays cheap but a
+# push cannot carry a broken build.
+#
+# Install with:  make hooks
+#
+# Every version below is pinned. `pre-commit autoupdate` is a deliberate,
+# reviewed change, not something that happens by itself.
+
+minimum_pre_commit_version: "4.0.0"
+default_install_hook_types: [pre-commit, pre-push, commit-msg]
+fail_fast: false
+
+repos:
+  # --- generic hygiene -----------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=512"]
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-yaml
+        args: ["--allow-multiple-documents"]
+        # RenderCV design/locale files are consumed by rendercv, not by us.
+        exclude: ^backend/rendercv_config/
+      - id: check-toml
+      - id: check-json
+        exclude: ^frontend/tsconfig\.json$ # tsconfig allows comments
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: ["--markdown-linebreak-ext=md"]
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+      - id: detect-private-key
+
+  # --- secrets -------------------------------------------------------------
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  # --- python --------------------------------------------------------------
+  # Version must match `ruff==0.16.8` in backend/pyproject.toml.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.8
+    hooks:
+      - id: ruff-check
+        args: ["--fix", "--exit-non-zero-on-fix"]
+        files: ^backend/
+      - id: ruff-format
+        files: ^backend/
+
+  # --- slow gates, on push only -------------------------------------------
+  # These call the same Makefile targets CI calls, so there is exactly one
+  # definition of each gate.
+  - repo: local
+    hooks:
+      # prettier runs from the repo's own node_modules so the hook cannot drift
+      # from the version in frontend/package.json. `mirrors-prettier` is
+      # archived upstream and would pin a second, separate copy.
+      - id: prettier
+        name: prettier (frontend)
+        entry: make fmt-frontend
+        language: system
+        pass_filenames: false
+        files: ^frontend/
+        exclude: ^frontend/(node_modules|out|\.next)/
+        stages: [pre-commit]
+
+      - id: mypy
+        name: mypy (backend)
+        entry: make typecheck-backend
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+        files: ^backend/.*\.py$
+
+      - id: eslint
+        name: eslint (frontend)
+        entry: make lint-frontend
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+        files: ^frontend/src/.*\.(ts|tsx)$
+
+      - id: tsc
+        name: tsc --noEmit (frontend)
+        entry: make typecheck-frontend
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+        files: ^frontend/.*\.(ts|tsx|json)$
+
+      - id: pytest
+        name: pytest (backend)
+        entry: make test-backend
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+        files: ^backend/
+
+      - id: jest
+        name: jest (frontend)
+        entry: make test-frontend
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+        files: ^frontend/
+
+  # --- commit messages -----------------------------------------------------
+  # AGENTS.md section 9: conventional commits carrying the task id, e.g.
+  #   feat(rendering): add subprocess timeout [1.3]
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args: [feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert]
