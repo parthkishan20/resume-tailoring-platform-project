@@ -19,6 +19,26 @@ async def test_put_master_resume_creates(client):
 
 
 @pytest.mark.anyio
+async def test_put_master_resume_refuses_a_document_that_will_not_render(client):
+    """Regression for D-04's PUT half.
+
+    `PATCH /api/resumes/{id}` already refused an invalid document (task 2.5);
+    this route stored one first and only failed later, at
+    `GET /api/master-resume/preview` or the next `POST /api/resumes/stream`.
+    """
+    response = await client.put(
+        "/api/master-resume",
+        json={"yaml_content": "cv:\n  name: [not, a, mapping]"},
+    )
+    assert response.status_code == 422
+    assert "not valid" in response.json()["detail"]
+
+    # And the row is not silently stored anyway.
+    get_response = await client.get("/api/master-resume")
+    assert get_response.status_code == 404
+
+
+@pytest.mark.anyio
 async def test_delete_master_resume(client):
     await client.put("/api/master-resume", json={"yaml_content": "cv:\n  name: Test"})
     response = await client.delete("/api/master-resume")

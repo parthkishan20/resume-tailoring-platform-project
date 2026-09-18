@@ -2,9 +2,9 @@
 
 ``normalize_to_rendercv`` repairs; this only reports. Any write path that wants
 to refuse bad YAML rather than store it and discover the problem at render time
-calls :func:`validate` — that is task 2.5's ``PUT /api/master-resume`` and
-``PATCH /api/resumes/{id}`` (PLAN.md D-04). Nothing calls it yet, so no
-endpoint's behaviour changes in this task.
+calls :func:`validate` — ``PATCH /api/resumes/{id}`` (task 2.5) and
+``PUT /api/master-resume`` (D-04's other half, closed during wave 4's
+release-gate triage, since task 2.5 did not own that route's file).
 
 The check runs against the same theme the renderer uses, so "valid here" means
 "renders there".

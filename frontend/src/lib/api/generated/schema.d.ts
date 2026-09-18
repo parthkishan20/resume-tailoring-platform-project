@@ -128,7 +128,18 @@ export interface paths {
     };
     /** Get Resume */
     get: operations["get_resume_api_master_resume_get"];
-    /** Save Resume */
+    /**
+     * Save Resume
+     * @description Save the master resume, replacing whatever was there.
+     *
+     *     D-04, closed here for the last route it was still open on: task 2.5
+     *     closed it for `PATCH /api/resumes/{id}` and named this route as the
+     *     other half, left alone because it did not own this file. Same check,
+     *     same theme as the renderer would report: refuse to store a document that
+     *     will not render, rather than storing it and surfacing the problem later
+     *     at `GET /api/master-resume/preview` or a `POST /api/resumes/stream` that
+     *     reads this row back out.
+     */
     put: operations["save_resume_api_master_resume_put"];
     post?: never;
     /**

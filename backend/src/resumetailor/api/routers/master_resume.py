@@ -20,10 +20,25 @@ from resumetailor.db.repositories import (
 from resumetailor.deps import get_backend
 from resumetailor.core.errors import RenderError
 from resumetailor.core.security import MAX_RESUME_YAML_CHARS, read_upload_capped
+from resumetailor.rendering.errors import RenderIssue
 from resumetailor.resume_schema.normalize import normalize_to_rendercv
 from resumetailor.resume_schema.prompt import IMPORT_SYSTEM_PROMPT
+from resumetailor.resume_schema.validate import validate
 
 router = APIRouter()
+
+
+def _issue_detail(issues: list[RenderIssue]) -> str:
+    """The validation failures, as one line the user can act on.
+
+    Same shape as `api/routers/resumes.py`'s helper of the same name (D-04's
+    other route) -- kept local rather than imported, since a two-line string
+    formatter is not worth coupling one route module to another's internals
+    for.
+    """
+    return "This resume is not valid: " + "; ".join(
+        f"{issue.path}: {issue.message}" for issue in issues
+    )
 
 
 def _db_path() -> str:
@@ -52,6 +67,20 @@ async def get_resume():
     responses=error_responses(413, 422),
 )
 async def save_resume(body: MasterResumeBody):
+    """Save the master resume, replacing whatever was there.
+
+    D-04, closed here for the last route it was still open on: task 2.5
+    closed it for `PATCH /api/resumes/{id}` and named this route as the
+    other half, left alone because it did not own this file. Same check,
+    same theme as the renderer would report: refuse to store a document that
+    will not render, rather than storing it and surfacing the problem later
+    at `GET /api/master-resume/preview` or a `POST /api/resumes/stream` that
+    reads this row back out.
+    """
+    _, issues = await asyncio.to_thread(validate, body.yaml_content)
+    if issues:
+        raise HTTPException(status_code=422, detail=_issue_detail(issues))
+
     row = await asyncio.to_thread(upsert_master_resume, _db_path(), body.yaml_content)
     return row
 

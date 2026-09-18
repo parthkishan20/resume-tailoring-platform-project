@@ -1050,6 +1050,7 @@
         "summary": "Get Resume"
       },
       "put": {
+        "description": "Save the master resume, replacing whatever was there.\n\nD-04, closed here for the last route it was still open on: task 2.5\nclosed it for `PATCH /api/resumes/{id}` and named this route as the\nother half, left alone because it did not own this file. Same check,\nsame theme as the renderer would report: refuse to store a document that\nwill not render, rather than storing it and surfacing the problem later\nat `GET /api/master-resume/preview` or a `POST /api/resumes/stream` that\nreads this row back out.",
         "operationId": "save_resume_api_master_resume_put",
         "requestBody": {
           "content": {
