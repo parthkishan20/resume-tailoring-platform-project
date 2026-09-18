@@ -97,6 +97,14 @@ TEST_ENV: dict[str, str] = {
     "LLM_MOCK": "true",
     "LOG_LEVEL": "WARNING",
     "LOG_FORMAT": "text",
+    # Pinned so a slow value in backend/.env cannot make the suite itself
+    # slow, and so a test asserting the default profile is not silently
+    # exercising a developer's local override instead.
+    "LLM_TIMEOUT_S": "60.0",
+    "LLM_MAX_ATTEMPTS": "3",
+    "LLM_RETRY_BACKOFF_S": "0.5",
+    "LLM_MAX_TOKENS": "8192",
+    "LLM_STREAM_STALL_TIMEOUT_S": "30.0",
 }
 
 

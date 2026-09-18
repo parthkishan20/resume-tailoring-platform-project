@@ -23,7 +23,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from resumetailor.core.errors import ConfigurationError
@@ -51,6 +51,15 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: SecretStr = SecretStr("")
     LLM_MODEL: str = "gpt-4o-mini"
     LLM_MOCK: bool = False
+
+    # What bounds one provider call (PLAN.md D-46). The adapter reads these
+    # through `llm.config.LLMProfile`, which documents each one; the bounds
+    # are declared here so a bad value fails the boot rather than the call.
+    LLM_TIMEOUT_S: float = Field(default=60.0, gt=0)
+    LLM_MAX_ATTEMPTS: int = Field(default=3, ge=1)
+    LLM_RETRY_BACKOFF_S: float = Field(default=0.5, gt=0)
+    LLM_MAX_TOKENS: int = Field(default=8192, gt=0)
+    LLM_STREAM_STALL_TIMEOUT_S: float = Field(default=30.0, gt=0)
 
     DB_PATH: str = "/app/db/resumedb.db"
     PDFS_DIR: str = "/app/pdfs"
