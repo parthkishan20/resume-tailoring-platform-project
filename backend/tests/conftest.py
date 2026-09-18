@@ -82,8 +82,55 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import NamedTuple
 
+import dotenv
 import pytest
 from httpx import ASGITransport, AsyncClient
+
+# ── D-66 harness guard: neutralize every dependency's own dotenv loading ───
+#
+# `litellm/__init__.py` calls `dotenv.load_dotenv(override=False)` at import
+# time (`import dotenv as _dotenv; _dotenv.load_dotenv(...)`), and
+# `load_dotenv` fills in any environment variable that is *absent* by walking
+# up from the working directory with `find_dotenv()` until it finds a `.env`.
+# D-66: one test deleted `OPENAI_API_KEY` before its first `import litellm` of
+# the process, to test that the adapter never touches `os.environ` — and that
+# absence is exactly what `load_dotenv` fills, so a real credential from the
+# repo's `.env` briefly entered the test process. That one test now sets a
+# present sentinel instead (closing that specific gap), but the mechanism
+# itself was still open: nothing stopped a *different* dependency from doing
+# the same thing in a test that does not happen to delete the key first.
+#
+# A per-test fixture — even `scope="session", autouse=True` — cannot close
+# this at the root, because pytest fully collects (imports) every test module
+# before running any test's setup phase, and several modules in this suite
+# (`test_llm.py`, `test_llm_bounds.py`, `test_backend_wiring.py`) import
+# `resumetailor.llm.litellm_adapter` at module level, which imports `litellm`
+# at *collection* time — before any fixture, session-scoped or not, has had a
+# chance to run. The only hook that runs earlier than collection is the
+# import of `conftest.py` itself, which pytest always does first. Patching
+# `dotenv.load_dotenv` here, at module level, is therefore the earliest point
+# available and the only one early enough to guarantee no test module's own
+# top-level import can trigger a real leak — module-level code in
+# `conftest.py` runs exactly once per test process, which is what "applied
+# once at session scope" means in practice for an import-time side effect.
+#
+# Because `litellm` looks up `_dotenv.load_dotenv` as a plain attribute on the
+# `dotenv` module at call time (not a name bound once at its own import time),
+# mutating the attribute on the module object here is visible to every later
+# importer of `dotenv`, including `litellm`, however it imports the module.
+# Kept for the regression test (`test_harness_guards.py`), which needs the
+# real function to prove the guard is load-bearing rather than vacuous.
+REAL_LOAD_DOTENV = dotenv.load_dotenv
+
+
+def _load_dotenv_noop(*_args: object, **_kwargs: object) -> bool:
+    """Replaces `dotenv.load_dotenv` for the whole test process. See above."""
+    return False
+
+
+D66_GUARD_MARKER = "_is_d66_guard"
+setattr(_load_dotenv_noop, D66_GUARD_MARKER, True)
+dotenv.load_dotenv = _load_dotenv_noop  # type: ignore[assignment]
 
 # Every field of `Settings`, pinned. Anything absent here would fall through to
 # `backend/.env` on a developer machine and to the field default in CI, which
