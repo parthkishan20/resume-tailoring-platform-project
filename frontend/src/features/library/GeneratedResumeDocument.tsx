@@ -7,13 +7,14 @@ import {
   AlertDialogContent,
   AlertDialogTrigger,
   Button,
-  ErrorState,
-  Skeleton,
   cn,
+  DocumentFrame,
+  ErrorState,
+  ModeSwitch,
+  Skeleton,
   useToast,
+  type DocumentMode,
 } from "@/design-system";
-import { DocumentFrame } from "@/features/document/DocumentFrame";
-import { ModeSwitch, type DocumentMode } from "@/features/document/ModeSwitch";
 import { YamlEditor } from "@/features/document/YamlEditor";
 import { useDeleteResume, useRenderResume, useResume, useUpdateResume } from "@/features/queries";
 import { ResizeHandle } from "@/features/workspace/ResizeHandle";
