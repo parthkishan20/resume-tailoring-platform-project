@@ -31,6 +31,11 @@ services:
     tmpfs:
       - /app/db
       - /app/pdfs
+      # D-50: the render scratch, same as the dev stack. A tmpfs mount is
+      # created mode 1777 (the kernel's default for tmpfs with no `mode=`
+      # option), so it stays writable now that the image runs as uid 10001 and
+      # not root.
+      - /tmp
     environment:
       - LLM_MOCK=true
       - OPENAI_API_KEY=mock-key-not-used

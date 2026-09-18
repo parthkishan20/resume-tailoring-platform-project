@@ -5,13 +5,14 @@ import json
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from resumetailor.backend_api import BackendAPI
 from resumetailor.core.config import get_settings
 from resumetailor.db.repositories import get_chat_messages, add_chat_message, clear_chat, get_system_prompt
 from resumetailor.deps import get_backend
 from resumetailor.core.errors import LLMAuthError, LLMUnavailableError
+from resumetailor.core.security import MAX_CHAT_MESSAGE_CHARS
 
 router = APIRouter()
 
@@ -28,7 +29,7 @@ def _sse(event: str, data: dict) -> str:
 
 
 class ChatRequest(BaseModel):
-    message: str
+    message: str = Field(max_length=MAX_CHAT_MESSAGE_CHARS)
 
 
 @router.get("/api/chat")

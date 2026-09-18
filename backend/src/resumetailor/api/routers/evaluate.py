@@ -5,11 +5,12 @@ import json
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from resumetailor.backend_api import BackendAPI
 from resumetailor.deps import get_backend
 from resumetailor.core.errors import LLMAuthError, LLMUnavailableError
+from resumetailor.core.security import MAX_JOB_DESCRIPTION_CHARS, MAX_RESUME_YAML_CHARS
 
 router = APIRouter()
 
@@ -40,8 +41,8 @@ _EVALUATE_RESPONSE_FORMAT = {
 
 
 class EvaluateRequest(BaseModel):
-    yaml_content: str
-    job_description: str
+    yaml_content: str = Field(max_length=MAX_RESUME_YAML_CHARS)
+    job_description: str = Field(max_length=MAX_JOB_DESCRIPTION_CHARS)
 
 
 def _sse(event: str, data: dict) -> str:

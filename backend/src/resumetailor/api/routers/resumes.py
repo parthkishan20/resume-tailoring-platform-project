@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from resumetailor.backend_api import BackendAPI
 from resumetailor.core.config import get_settings
@@ -16,6 +16,7 @@ from resumetailor.db.repositories import (
 )
 from resumetailor.deps import get_backend
 from resumetailor.core.errors import LLMAuthError, LLMUnavailableError, RenderError, PDFExtractError
+from resumetailor.core.security import MAX_JOB_DESCRIPTION_CHARS, resolve_within
 from resumetailor.prompts import GENERATION_SYSTEM_PROMPT, CRITIQUE_SYSTEM_PROMPT, rules_block
 from resumetailor.resume_schema.normalize import normalize_to_rendercv
 
@@ -47,7 +48,7 @@ def _sse(event: str, data: dict) -> str:
 
 
 class GenerateRequest(BaseModel):
-    job_description: str
+    job_description: str = Field(max_length=MAX_JOB_DESCRIPTION_CHARS)
 
 
 class ResumeUpdate(BaseModel):
@@ -185,8 +186,10 @@ async def get_pdf(resume_id: int):
     row = await asyncio.to_thread(get_resume, _db_path(), resume_id)
     if row is None or not row.pdf_path:
         raise HTTPException(status_code=404, detail="PDF not found")
-    pdf_path = Path(_pdfs_dir()) / row.pdf_path
-    if not pdf_path.exists():
+    # D-25: a stored filename joined to PDFS_DIR must stay inside it. 404, not
+    # 403: a 403 would confirm the path exists and that a check refused it.
+    pdf_path = resolve_within(_pdfs_dir(), row.pdf_path)
+    if pdf_path is None or not pdf_path.exists():
         raise HTTPException(status_code=404, detail="PDF file not found")
     return FileResponse(str(pdf_path), media_type="application/pdf",
                         headers={"Content-Disposition": "inline"})
@@ -214,5 +217,7 @@ async def delete_generated(resume_id: int):
     if not deleted:
         raise HTTPException(status_code=404, detail="Resume not found")
     if row and row.pdf_path:
-        pdf_path = Path(_pdfs_dir()) / row.pdf_path
-        pdf_path.unlink(missing_ok=True)
+        # D-25, as above: never unlink outside PDFS_DIR.
+        pdf_path = resolve_within(_pdfs_dir(), row.pdf_path)
+        if pdf_path is not None:
+            pdf_path.unlink(missing_ok=True)

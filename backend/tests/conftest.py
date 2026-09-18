@@ -105,6 +105,13 @@ TEST_ENV: dict[str, str] = {
     "LLM_RETRY_BACKOFF_S": "0.5",
     "LLM_MAX_TOKENS": "8192",
     "LLM_STREAM_STALL_TIMEOUT_S": "30.0",
+    # Task 2.4's rate limiter, off. Its bucket store lives on a module-level
+    # singleton, and the module-level `app` the `client` fixture mounts is built
+    # once per session, so leaving it on would make nine unrelated route tests
+    # share one bucket and start refusing each other in whatever order
+    # pytest-randomly picked. `tests/test_security.py` switches it on for
+    # itself, with its own bucket, and clears the state on the way out.
+    "SECURITY_RATE_LIMIT_ENABLED": "false",
 }
 
 

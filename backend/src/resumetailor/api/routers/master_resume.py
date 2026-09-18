@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from resumetailor.backend_api import BackendAPI
 from resumetailor.core.config import get_settings
@@ -17,6 +17,7 @@ from resumetailor.db.repositories import (
 )
 from resumetailor.deps import get_backend
 from resumetailor.core.errors import RenderError
+from resumetailor.core.security import MAX_RESUME_YAML_CHARS, read_upload_capped
 from resumetailor.resume_schema.normalize import normalize_to_rendercv
 from resumetailor.resume_schema.prompt import IMPORT_SYSTEM_PROMPT
 
@@ -28,7 +29,7 @@ def _db_path() -> str:
 
 
 class MasterResumeBody(BaseModel):
-    yaml_content: str
+    yaml_content: str = Field(max_length=MAX_RESUME_YAML_CHARS)
 
 
 @router.get("/api/master-resume")
@@ -65,7 +66,7 @@ async def preview_master_resume(
     try:
         pdf_bytes = await backend.render(normalize_to_rendercv(row.yaml_content).yaml)
     except RenderError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail=exc.client_message)
 
     return Response(content=pdf_bytes, media_type="application/pdf")
 
@@ -77,7 +78,9 @@ async def import_pdf(
 ):
     if file.content_type != "application/pdf":
         raise HTTPException(status_code=400, detail="File must be a PDF")
-    pdf_bytes = await file.read()
+    # D-48: bounded chunks with a running total, not `await file.read()`,
+    # which materialised the whole body before any size check ran.
+    pdf_bytes = await read_upload_capped(file)
     text = await api.extract(pdf_bytes)
     response_format = {
         "type": "json_schema",

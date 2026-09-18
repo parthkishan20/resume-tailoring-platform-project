@@ -1,8 +1,9 @@
 # backend/src/resumetailor/api/routers/system_prompt.py
 import asyncio
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from resumetailor.core.config import get_settings
+from resumetailor.core.security import MAX_SYSTEM_PROMPT_CHARS
 from resumetailor.db.repositories import (
     get_system_prompt,
     upsert_system_prompt,
@@ -17,7 +18,7 @@ def _db_path():
 
 
 class SystemPromptBody(BaseModel):
-    content: str
+    content: str = Field(max_length=MAX_SYSTEM_PROMPT_CHARS)
 
 
 @router.get("/api/system-prompt")
