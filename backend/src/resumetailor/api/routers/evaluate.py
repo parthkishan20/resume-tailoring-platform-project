@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from resumetailor.backend_api import BackendAPI
 from resumetailor.deps import get_backend
-from resumetailor.ports import LLMAuthError, LLMUnavailableError
+from resumetailor.core.errors import LLMAuthError, LLMUnavailableError
 
 router = APIRouter()
 

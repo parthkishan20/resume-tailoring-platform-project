@@ -3,20 +3,22 @@
 Each test reproduces a real failure observed when feeding LLM-generated YAML
 to `rendercv render` (rendercv 2.8 validates with pydantic + phonenumbers).
 """
+
 import yaml
 import pytest
 
-from resumetailor.yaml_utils import normalize_to_rendercv
+from resumetailor.resume_schema.normalize import normalize_to_rendercv
 
 
 def _norm(raw: str) -> dict:
-    return yaml.safe_load(normalize_to_rendercv(raw))
+    return yaml.safe_load(normalize_to_rendercv(raw).yaml)
 
 
 MINIMAL_SKILLS = "    skills:\n    - label: Skills\n      details: Python\n"
 
 
 # ---------------------------------------------------------------- phone
+
 
 def test_invalid_phone_dropped():
     """123 is not a real US area code — rendercv rejects it, so drop it."""
@@ -26,7 +28,9 @@ def test_invalid_phone_dropped():
 
 def test_placeholder_phone_dropped():
     """555-000-0000 passes the old format check but fails phonenumbers."""
-    raw = 'cv:\n  name: Jane\n  phone: "+1-555-000-0000"\n  sections:\n' + MINIMAL_SKILLS
+    raw = (
+        'cv:\n  name: Jane\n  phone: "+1-555-000-0000"\n  sections:\n' + MINIMAL_SKILLS
+    )
     assert "phone" not in _norm(raw)["cv"]
 
 
@@ -37,17 +41,18 @@ def test_valid_us_phone_normalized():
 
 def test_international_phone_kept():
     """Valid non-US numbers used to be silently dropped by the 10/11-digit check."""
-    raw = 'cv:\n  name: Jane\n  phone: "+91 98765 43210"\n  sections:\n' + MINIMAL_SKILLS
+    raw = (
+        'cv:\n  name: Jane\n  phone: "+91 98765 43210"\n  sections:\n' + MINIMAL_SKILLS
+    )
     assert _norm(raw)["cv"]["phone"] == "+919876543210"
 
 
 # ---------------------------------------------------------------- sections
 
+
 def test_null_section_dropped_without_crash():
     """`certifications:` with no value crashed _normalize_certifications."""
-    raw = (
-        "cv:\n  name: Jane\n  sections:\n    certifications:\n" + MINIMAL_SKILLS
-    )
+    raw = "cv:\n  name: Jane\n  sections:\n    certifications:\n" + MINIMAL_SKILLS
     result = _norm(raw)
     assert "certifications" not in result["cv"]["sections"]
     assert "skills" in result["cv"]["sections"]
@@ -63,6 +68,7 @@ def test_scalar_section_wrapped_in_list():
 
 
 # ---------------------------------------------------------------- entries
+
 
 def test_none_highlight_filtered():
     raw = (
@@ -108,6 +114,7 @@ def test_education_without_area_uses_degree_text():
 
 # ---------------------------------------------------------------- socials
 
+
 def test_twitter_mapped_to_x():
     raw = (
         "cv:\n  name: Jane\n"
@@ -148,6 +155,7 @@ def test_url_username_stripped_to_handle():
 
 # ---------------------------------------------------------------- cv keys
 
+
 def test_unknown_cv_key_dropped_and_label_becomes_headline():
     raw = (
         "cv:\n  name: Jane\n"
@@ -163,24 +171,26 @@ def test_unknown_cv_key_dropped_and_label_becomes_headline():
 
 # ---------------------------------------------------------------- backstop
 
+
 def test_backstop_prunes_fields_normalizer_does_not_know():
     """Anything the deterministic fixes miss must be pruned by schema validation."""
-    raw = (
-        "cv:\n  name: Jane\n"
-        "  email: not-an-email\n"
-        "  sections:\n" + MINIMAL_SKILLS
-    )
+    raw = "cv:\n  name: Jane\n  email: not-an-email\n  sections:\n" + MINIMAL_SKILLS
     cv = _norm(raw)["cv"]
     assert "email" not in cv
     assert cv["name"] == "Jane"
 
 
 def test_normalized_output_passes_rendercv_schema():
-    """End-to-end: nasty-but-salvageable input must validate against rendercv."""
-    pytest.importorskip("rendercv")
+    """End-to-end: nasty-but-salvageable input must validate against rendercv.
+
+    No `importorskip` here any more (D-17). A rendercv that cannot be imported
+    must fail this test, not quietly skip it — skipping is exactly how the
+    backstop could have become a permanent no-op without anyone noticing.
+    """
     from rendercv.schema.rendercv_model_builder import (
         build_rendercv_model_from_commented_map,
     )
+    from resumetailor.rendering.config import RenderProfile
 
     raw = """
 cv:
@@ -210,6 +220,7 @@ cv:
         duration: "Sept 2020 to May 2022"
         gpa: 3.9
 """
-    data = yaml.safe_load(normalize_to_rendercv(raw))
-    data["design"] = {"theme": "classic"}
+    data = yaml.safe_load(normalize_to_rendercv(raw).yaml)
+    # The theme that is actually rendered, not a hardcoded "classic" (D-18).
+    data["design"] = {"theme": RenderProfile().theme()}
     build_rendercv_model_from_commented_map(data)  # must not raise

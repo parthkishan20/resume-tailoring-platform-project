@@ -15,9 +15,9 @@ from resumetailor.database import (
     get_master_resume, get_rules,
 )
 from resumetailor.deps import get_backend
-from resumetailor.ports import LLMAuthError, LLMUnavailableError, RenderError, PDFExtractError
+from resumetailor.core.errors import LLMAuthError, LLMUnavailableError, RenderError, PDFExtractError
 from resumetailor.prompts import GENERATION_SYSTEM_PROMPT, CRITIQUE_SYSTEM_PROMPT, rules_block
-from resumetailor.yaml_utils import normalize_to_rendercv
+from resumetailor.resume_schema.normalize import normalize_to_rendercv
 
 router = APIRouter()
 
@@ -66,7 +66,7 @@ async def generate_resume_stream(
             yield _sse("progress", {"message": "Analyzing job description..."})
 
             # Normalise master resume to valid rendercv before feeding to the LLM
-            master_yaml = normalize_to_rendercv(master["yaml_content"])
+            master_yaml = normalize_to_rendercv(master["yaml_content"]).yaml
 
             # User-configured limits override the prompt's default counts
             rules_suffix = rules_block(await asyncio.to_thread(get_rules, _db_path()))
@@ -91,7 +91,7 @@ async def generate_resume_stream(
                     },
                 },
             )
-            draft_yaml = normalize_to_rendercv(json.loads(gen_response)["yaml_content"])
+            draft_yaml = normalize_to_rendercv(json.loads(gen_response)["yaml_content"]).yaml
 
             yield _sse("progress", {"message": "Tailoring content..."})
 
@@ -107,7 +107,7 @@ async def generate_resume_stream(
                 final_yaml = audit_response.split("AUDIT_END", 1)[1].strip()
             else:
                 final_yaml = audit_response.strip()
-            final_yaml = normalize_to_rendercv(final_yaml)
+            final_yaml = normalize_to_rendercv(final_yaml).yaml
 
             yield _sse("progress", {"message": "Rendering PDF..."})
 

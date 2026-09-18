@@ -1,6 +1,6 @@
 import json
 import pytest
-from resumetailor.ports import LLMUnavailableError
+from resumetailor.core.errors import LLMUnavailableError
 
 
 @pytest.mark.anyio

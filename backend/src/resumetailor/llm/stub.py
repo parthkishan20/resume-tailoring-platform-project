@@ -1,24 +1,33 @@
-# MOVED BY TASK 1.3. This becomes llm/stub.py, the deterministic stub used by
-# the tests and by LLM_MOCK. See PLAN.md section 3.2.
-#
-# `_FIXTURE_PDF` still points into `backend/tests/`, which is where it pointed
-# before the move. That is a real problem and 1.3 should fix it: `.dockerignore`
-# excludes `backend/tests/`, so inside the image this path does not exist and
-# LLM_MOCK render fails with FileNotFoundError. See the 1.1 report.
+"""The deterministic backend: no network, no key, the same answer every time.
+
+This is what ``LLM_MOCK=true`` runs against and what the e2e stack uses. It
+implements all three ports, so ``backend_api.create_stub_backend`` can hand the
+same object to each one.
+
+The fixture PDF lives here, inside the package, rather than in
+``backend/tests/`` where it used to (PLAN.md D-64). ``.dockerignore`` excludes
+the test tree from the image, so in the container the old path did not exist
+and the first generation in the e2e stack died with ``FileNotFoundError`` —
+which nothing had caught, because both tasks that built that stack ran without
+a Docker daemon.
+"""
+
 from __future__ import annotations
+
 import json
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
+from pathlib import Path
+from typing import Any
 
-from resumetailor.core.config import BACKEND_ROOT
-
-_FIXTURE_PDF = BACKEND_ROOT / "tests" / "fixtures" / "mock.pdf"
+_FIXTURE_PDF = Path(__file__).resolve().parent / "fixtures" / "mock.pdf"
 
 # ── Tier 1 constants (PLAN.md §11) ─────────────────────────────────────────
 
-MOCK_CHAT_RESULT: dict = {
+MOCK_CHAT_RESULT: dict[str, Any] = {
     "text": (
-        "I understand. Here's what I can help you with: editing your master resume, "
-        "generating a tailored resume, or evaluating a resume against a job description."
+        "I understand. Here's what I can help you with: editing your master "
+        "resume, generating a tailored resume, or evaluating a resume against "
+        "a job description."
     ),
     "action": None,
 }
@@ -54,7 +63,7 @@ cv:
       details: Docker, Git, FastAPI, React
 """
 
-MOCK_EVALUATION_RESULT: dict = {
+MOCK_EVALUATION_RESULT: dict[str, Any] = {
     "match_score": 72,
     "critique": (
         "The resume covers most required skills but lacks explicit mention of "
@@ -75,13 +84,16 @@ MOCK_GENERATION_PROGRESS: list[str] = [
 
 # ── Tier 1: SimulatedBackendAPI ─────────────────────────────────────────────
 
+
 class SimulatedBackendAPI:
     """Deterministic E2E mock. Activated when LLM_MOCK=true."""
 
     async def complete(
-        self, messages: list[dict], response_format: dict | None = None
+        self,
+        messages: list[dict[str, Any]],
+        response_format: dict[str, Any] | None = None,
     ) -> str:
-        system = next(
+        system: str = next(
             (m["content"] for m in messages if m.get("role") == "system"), ""
         )
         if "ResumeTailor" in system:
@@ -89,7 +101,7 @@ class SimulatedBackendAPI:
                 return json.dumps({"yaml_content": MOCK_GENERATION_RESULT_YAML})
             return MOCK_GENERATION_RESULT_YAML
         if "ResumeAuditor" in system:
-            user_content = next(
+            user_content: str = next(
                 (m["content"] for m in reversed(messages) if m.get("role") == "user"),
                 "",
             )
@@ -102,20 +114,24 @@ class SimulatedBackendAPI:
             return json.dumps({"yaml_content": MOCK_GENERATION_RESULT_YAML})
         return json.dumps(MOCK_CHAT_RESULT)
 
-    async def stream(self, messages: list[dict]) -> AsyncIterator[str]:
+    async def stream(
+        self,
+        messages: list[dict[str, Any]],  # noqa: ARG002 — fixed answer
+    ) -> AsyncIterator[str]:
         async def _gen() -> AsyncIterator[str]:
-            yield MOCK_CHAT_RESULT["text"]
+            text: str = MOCK_CHAT_RESULT["text"]
+            yield text
 
         return _gen()
 
-    async def render(self, yaml_content: str) -> bytes:
+    async def render(self, yaml_content: str) -> bytes:  # noqa: ARG002
         return _FIXTURE_PDF.read_bytes()
 
-    async def extract(self, pdf_bytes: bytes) -> str:
+    async def extract(self, pdf_bytes: bytes) -> str:  # noqa: ARG002
         return (
             "John Mock\nmock@example.com\n+10000000000\nMock City, MC\n\n"
-            "EDUCATION\nMock University — B.S. Computer Science, 2018–2022\n\n"
-            "EXPERIENCE\nMock Corp — Software Engineer, 2022–present\n"
+            "EDUCATION\nMock University — B.S. Computer Science, 2018–2022\n\n"  # noqa: RUF001
+            "EXPERIENCE\nMock Corp — Software Engineer, 2022–present\n"  # noqa: RUF001
             "  • Built mock features using Python and React\n"
             "  • Deployed mock services with Docker\n\n"
             "SKILLS\nPython, TypeScript, React, Docker, Git, FastAPI, SQL"

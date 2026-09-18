@@ -1,6 +1,6 @@
 """The RenderCV subprocess boundary.
 
-Empty by design. Task 1.3 moves `RenderCVAdapter` out of
-`resumetailor/adapters.py` into `runner.py`, `config.py` and `errors.py`;
-see PLAN.md D-07, D-15, D-16.
+``runner.py`` runs the CLI under a timeout and a concurrency bound,
+``config.py`` says where its three overlay files are and how long it may take,
+``errors.py`` turns a structured validation failure into located issues.
 """
