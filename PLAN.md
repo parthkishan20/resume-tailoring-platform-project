@@ -3,8 +3,13 @@
 > The single source of truth for what is being built and in what order.
 > Every agent updates this file as part of the same change as its code. See [`AGENTS.md`](./AGENTS.md) §6.
 >
-> **Status:** Audits complete (6 of 6). 63 defects registered. Wave 0 ready to execute.
-> Blocked on Decision D1 (visual direction) for all UI tasks, and on blockers B-03 and B-04.
+> **Status:** Waves 0, 1, and 2 complete and merged (23 of 38 tasks). 70 defects registered,
+> most already closed inline. `make check` green on `restructure/production-readiness`:
+> 316 backend tests (91.92% coverage), 264 frontend tests. Session paused here by user choice
+> at a clean checkpoint — nothing in flight, no worktrees open, working tree clean.
+> **Next: launch Wave 3** (§4) — six tasks, resume from task 3.1. Read §7 Change log's most
+> recent entries and AGENTS.md in full before starting; the worktree-and-merge pattern used
+> throughout waves 1-2 is documented there and should be reused as-is.
 > **Last updated:** 2026-09-18
 
 ---
