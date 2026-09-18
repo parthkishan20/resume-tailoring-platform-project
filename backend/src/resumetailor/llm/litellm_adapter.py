@@ -7,82 +7,355 @@ inherited it, including the ``rendercv`` subprocess, which has no use for a
 provider key and no business holding one (PLAN.md D-49). The key is passed
 explicitly on each call now and never leaves this object.
 
-Timeouts, retry with backoff and token accounting are task 2.1's; this module
-is where they land.
+Task 2.1 put a leash on the call itself. It was a bare, unbounded request
+(D-46): no timeout, so a stalled provider held an SSE connection open for as
+long as it cared to; no retry, so a rate limit — the most common transient
+failure there is — reached the user as an immediate 503; no ``max_tokens``, so
+the cost of a single call was whatever the model felt like generating. Five
+bounds now hold, and all five are configurable through :class:`LLMProfile`:
+
+* **A timeout per attempt.** LiteLLM's native ``timeout`` (it cancels the
+  request at the HTTP client, which cancelling the awaiting task does not),
+  with an ``asyncio.wait_for`` outside it as a backstop that does not depend on
+  the provider honouring anything.
+* **A stall timeout per streamed chunk.** A stream that is still producing
+  text is working however long it runs; one that has gone quiet is not,
+  however recently it started. Those are two different limits and a single
+  call timeout cannot express both.
+* **Retry with exponential backoff on transient failures only.** See
+  :meth:`LiteLLMAdapter._attempt` for what counts as transient and why an
+  auth failure and a timeout are both excluded.
+* **``max_tokens``**, which is the ceiling on cost per call.
+* **A guard on empty content** (D-59), which used to be a ``None`` returned
+  from a function annotated ``-> str``.
+
+Token usage leaves through :mod:`resumetailor.llm.usage` rather than the return
+value, because the port's signature is fixed and every caller depends on it.
 """
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-from typing import Any
+import asyncio
+import contextlib
+import logging
+from collections.abc import AsyncIterator, Awaitable, Callable
+from functools import lru_cache
+from typing import Any, NamedTuple, TypeVar
 
 from resumetailor.core.errors import LLMAuthError, LLMUnavailableError
+from resumetailor.llm.config import LLMProfile
+from resumetailor.llm.errors import LLMEmptyResponseError
+from resumetailor.llm.usage import UsageSink, log_usage, parse_usage
+
+logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+_AUTH_MESSAGE = "Invalid LLM API key (check OPENAI_API_KEY)"
 
 
-def _llm_exceptions() -> tuple[type[Exception], tuple[type[Exception], ...]]:
-    """Return ``(auth_error, unavailable_errors)``. Lazy: litellm is slow to import."""
+class _Taxonomy(NamedTuple):
+    """LiteLLM's exception classes, sorted by what they mean for a retry."""
+
+    #: Never retried: a rejected key is rejected on every attempt, so retrying
+    #: only delays the failure the operator needs to see and spends attempts.
+    auth: type[Exception]
+    #: Not retried either, for a different reason: a timeout has already
+    #: consumed the whole per-attempt budget, so a second attempt multiplies
+    #: the user's wait for a provider that has just demonstrated it is stuck.
+    #: This is what keeps the worst case at roughly one timeout rather than
+    #: ``max_attempts`` of them.
+    timeout: type[Exception]
+    #: Retried. Each of these is a fast rejection or a dropped connection: the
+    #: attempt costs little and the next one has a real chance.
+    retryable: tuple[type[Exception], ...]
+
+
+def _taxonomy() -> _Taxonomy:
+    """Resolve the exception classes. Lazy: ``litellm`` is ~1s to import.
+
+    ``Timeout`` and ``InternalServerError`` are named explicitly because
+    neither is a subclass of anything else here. LiteLLM's ``Timeout`` derives
+    from *openai*'s ``APIConnectionError``, not from LiteLLM's own class of
+    that name, so catching ``litellm.exceptions.APIConnectionError`` does not
+    catch it — which is how a timeout would otherwise have been silently
+    retried by the branch that is documented not to retry it.
+    """
     import litellm.exceptions as llm_exc
 
-    return llm_exc.AuthenticationError, (
-        llm_exc.RateLimitError,
-        llm_exc.ServiceUnavailableError,
-        llm_exc.APIConnectionError,
+    return _Taxonomy(
+        auth=llm_exc.AuthenticationError,
+        timeout=llm_exc.Timeout,
+        retryable=(
+            llm_exc.RateLimitError,
+            llm_exc.ServiceUnavailableError,
+            llm_exc.APIConnectionError,
+            llm_exc.InternalServerError,
+        ),
     )
 
 
-_AUTH_MESSAGE = "Invalid LLM API key (check OPENAI_API_KEY)"
+@lru_cache(maxsize=8)
+def _stream_usage_options(model: str) -> dict[str, Any] | None:
+    """``{"include_usage": True}`` when this model's provider accepts it.
+
+    A streamed response carries no usage totals unless they are asked for, and
+    the request that asks is an OpenAI extension that several providers reject
+    outright. LiteLLM is asked which parameters the model supports rather than
+    assumed to translate it, because the failure mode of guessing wrong is a
+    400 on every chat message.
+    """
+    from litellm import get_supported_openai_params
+
+    supported = get_supported_openai_params(model=model) or ()
+    if "stream_options" not in supported:
+        logger.debug("model %s reports no stream_options; usage unavailable", model)
+        return None
+    return {"include_usage": True}
+
+
+def _delta(chunk: Any) -> str | None:
+    """The text carried by one streaming chunk, if it carries any.
+
+    Three chunk shapes are not text and none of them is an error: the
+    usage-only final chunk that ``include_usage`` asks for has an empty
+    ``choices`` list, the opening chunk carries a role and a ``None`` content,
+    and a tool-call chunk carries arguments and a ``None`` content.
+    """
+    choices = getattr(chunk, "choices", None)
+    if not choices:
+        return None
+    content = choices[0].delta.content
+    return content if isinstance(content, str) and content else None
+
+
+async def _release(response: Any) -> None:
+    """Close the provider connection behind a stream.
+
+    This is the half of the streaming lifecycle that was missing. LiteLLM's
+    ``CustomStreamWrapper`` holds the HTTP response open, and the previous
+    implementation only ever stopped reading from it — on the normal end of a
+    stream the connection was released by garbage collection eventually, and
+    on a client disconnecting mid-response it was released whenever the object
+    happened to be collected, which is not a bound on anything.
+
+    Called from a ``finally``, so it runs on all three exits: the last chunk,
+    an error, and the ``GeneratorExit`` that arrives when the caller closes
+    the generator — which is what a browser closing an SSE connection
+    produces, by way of Starlette cancelling the response task. Awaiting
+    inside that ``finally`` is legal precisely because this is an *async*
+    generator: ``aclose()`` drives it to completion.
+
+    A failure to close is suppressed. It cannot be acted on, and letting it
+    propagate out of a ``finally`` would replace whatever error the caller was
+    already being told about with a less useful one.
+    """
+    aclose = getattr(response, "aclose", None)
+    if aclose is None:
+        return
+    with contextlib.suppress(Exception):
+        await aclose()
 
 
 class LiteLLMAdapter:
     """Calls a provider through LiteLLM and maps its errors to domain errors."""
 
-    def __init__(self, model: str, api_key: str) -> None:
+    def __init__(
+        self,
+        model: str,
+        api_key: str,
+        profile: LLMProfile | None = None,
+        on_usage: UsageSink | None = None,
+    ) -> None:
         self._model = model
         self._api_key = api_key
+        self._profile = profile if profile is not None else LLMProfile.from_settings()
+        self._on_usage: UsageSink = on_usage if on_usage is not None else log_usage
+
+    # ── Provider call ──────────────────────────────────────────────────────
+
+    def _kwargs(
+        self,
+        messages: list[dict[str, Any]],
+        response_format: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {
+            "model": self._model,
+            "messages": messages,
+            "api_key": self._api_key,
+            # LiteLLM's own timeout, which reaches the provider SDK's HTTP
+            # client. `max_tokens` rather than `max_completion_tokens`:
+            # LiteLLM translates it per provider, so this one name is correct
+            # for both the chat-completions models and the newer ones that
+            # renamed the parameter.
+            "timeout": self._profile.timeout_s,
+            "max_tokens": self._profile.max_tokens,
+        }
+        if response_format is not None:
+            kwargs["response_format"] = response_format
+        return kwargs
+
+    async def _attempt(self, what: str, call: Callable[[], Awaitable[T]]) -> T:
+        """Run ``call`` under the timeout, retrying transient failures.
+
+        Retry is on the *connection and setup* phase of a call, which for
+        ``stream`` means the request that opens the stream and nothing after
+        it. Once a token has reached the client there is no transparent retry
+        available: resuming would need the whole response buffered, which is
+        the one thing streaming exists not to do, and restarting would mean
+        re-emitting text the user has already read. Whether to start over is
+        the caller's decision — it owns the SSE response — so a mid-stream
+        failure is mapped to a domain error and raised, not papered over.
+        """
+        taxonomy = _taxonomy()
+        attempts = self._profile.max_attempts
+        for attempt in range(1, attempts + 1):
+            try:
+                result = await asyncio.wait_for(
+                    call(), timeout=self._profile.hard_timeout_s
+                )
+            except taxonomy.auth as exc:
+                raise LLMAuthError(_AUTH_MESSAGE) from exc
+            except taxonomy.timeout as exc:
+                msg = f"the provider did not answer within {self._profile.timeout_s:g}s"
+                raise LLMUnavailableError(msg) from exc
+            except TimeoutError as exc:
+                # The backstop fired, meaning LiteLLM's own timeout did not.
+                msg = (
+                    f"{what} exceeded its {self._profile.hard_timeout_s:g}s ceiling "
+                    "and was abandoned"
+                )
+                raise LLMUnavailableError(msg) from exc
+            except taxonomy.retryable as exc:
+                if attempt == attempts:
+                    msg = f"{what} failed after {attempts} attempts: {exc}"
+                    raise LLMUnavailableError(msg) from exc
+                delay = self._profile.backoff_delay(attempt)
+                logger.warning(
+                    "%s attempt %d/%d failed (%s); retrying in %.2fs",
+                    what,
+                    attempt,
+                    attempts,
+                    type(exc).__name__,
+                    delay,
+                    extra={"llm_retry_attempt": attempt, "llm_model": self._model},
+                )
+                await asyncio.sleep(delay)
+            else:
+                return result
+        # Unreachable: every path above returns or raises. Present so that the
+        # function has no implicit `None` return for mypy to reject.
+        msg = f"{what} exhausted its retries without an error to report"
+        raise LLMUnavailableError(msg)
+
+    def _report_usage(self, operation: str, raw: Any) -> None:
+        """Hand the call's token counts to the sink, if there are any.
+
+        Guarded because the sink is an injection point for code that does not
+        exist yet, and because for a stream this runs inside the teardown
+        ``finally`` — a cost-tracking bug must not be able to break, or
+        relabel, a generation the user was in the middle of.
+        """
+        usage = parse_usage(self._model, operation, raw)
+        if usage is None:
+            return
+        try:
+            self._on_usage(usage)
+        except Exception:
+            logger.exception("usage sink raised; this call is missing from the ledger")
+
+    # ── The port ───────────────────────────────────────────────────────────
 
     async def complete(
         self,
         messages: list[dict[str, Any]],
         response_format: dict[str, Any] | None = None,
     ) -> str:
+        """One non-streamed completion, as text.
+
+        Raises:
+            LLMAuthError: the key was rejected.
+            LLMEmptyResponseError: the provider answered with no text.
+            LLMUnavailableError: the provider timed out, or was still failing
+                transiently after the configured number of attempts.
+        """
         import litellm  # lazy: litellm is about a second to import
 
-        auth_error, unavailable = _llm_exceptions()
-        kwargs: dict[str, Any] = {
-            "model": self._model,
-            "messages": messages,
-            "api_key": self._api_key,
-        }
-        if response_format is not None:
-            kwargs["response_format"] = response_format
-        try:
-            response = await litellm.acompletion(**kwargs)
-        except auth_error as exc:
-            raise LLMAuthError(_AUTH_MESSAGE) from exc
-        except unavailable as exc:
-            raise LLMUnavailableError(str(exc)) from exc
-        content: str = response.choices[0].message.content
+        kwargs = self._kwargs(messages, response_format)
+        response = await self._attempt(
+            "completion", lambda: litellm.acompletion(**kwargs)
+        )
+        self._report_usage("complete", getattr(response, "usage", None))
+
+        content = response.choices[0].message.content
+        if not isinstance(content, str) or not content.strip():
+            reason = getattr(response.choices[0], "finish_reason", None)
+            msg = (
+                "the provider returned no text"
+                f"{f' (finish_reason={reason})' if reason else ''}"
+            )
+            raise LLMEmptyResponseError(msg)
         return content
 
     async def stream(self, messages: list[dict[str, Any]]) -> AsyncIterator[str]:
+        """The same completion, delivered as it is generated.
+
+        Raises (from the returned iterator, not from this coroutine — the
+        request is not sent until the first chunk is asked for, so that a
+        generator nobody iterates does not open a connection nobody closes):
+            LLMAuthError, LLMUnavailableError: as :meth:`complete`, plus
+                ``LLMUnavailableError`` when an established stream goes quiet
+                for longer than ``stream_stall_timeout_s``.
+        """
         import litellm  # lazy: litellm is about a second to import
 
-        auth_error, unavailable = _llm_exceptions()
-        model = self._model
-        api_key = self._api_key
+        kwargs = self._kwargs(messages)
+        kwargs["stream"] = True
+        options = _stream_usage_options(self._model)
+        if options is not None:
+            kwargs["stream_options"] = options
 
         async def _gen() -> AsyncIterator[str]:
+            response = await self._attempt(
+                "stream setup", lambda: litellm.acompletion(**kwargs)
+            )
+            raw_usage: Any = None
             try:
-                response = await litellm.acompletion(
-                    model=model, messages=messages, api_key=api_key, stream=True
-                )
-            except auth_error as exc:
-                raise LLMAuthError(_AUTH_MESSAGE) from exc
-            except unavailable as exc:
-                raise LLMUnavailableError(str(exc)) from exc
-            async for chunk in response:
-                delta = chunk.choices[0].delta.content
-                if delta:
-                    yield delta
+                async for chunk in self._chunks(response):
+                    raw_usage = getattr(chunk, "usage", None) or raw_usage
+                    delta = _delta(chunk)
+                    if delta:
+                        yield delta
+            finally:
+                self._report_usage("stream", raw_usage)
+                await _release(response)
 
         return _gen()
+
+    async def _chunks(self, response: Any) -> AsyncIterator[Any]:
+        """Yield raw chunks, bounding each read and mapping provider errors.
+
+        The previous loop was ``async for chunk in response`` with no timeout
+        and no ``except``: a provider that opened a stream and then stopped
+        writing held the connection until something else gave up, and a rate
+        limit that arrived mid-stream reached the route as a raw LiteLLM
+        exception, which its ``except Exception`` turned into a generic
+        ``CHAT_FAILED`` with the cause discarded.
+        """
+        taxonomy = _taxonomy()
+        stall = self._profile.stream_stall_timeout_s
+        iterator = response.__aiter__()
+        while True:
+            try:
+                chunk = await asyncio.wait_for(iterator.__anext__(), timeout=stall)
+            except StopAsyncIteration:
+                return
+            except TimeoutError as exc:
+                msg = f"the provider sent no token for {stall:g}s; stream abandoned"
+                raise LLMUnavailableError(msg) from exc
+            except taxonomy.auth as exc:
+                raise LLMAuthError(_AUTH_MESSAGE) from exc
+            except (taxonomy.timeout, *taxonomy.retryable) as exc:
+                msg = f"the stream failed after it had started: {exc}"
+                raise LLMUnavailableError(msg) from exc
+            yield chunk
