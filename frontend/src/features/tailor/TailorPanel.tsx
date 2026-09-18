@@ -203,7 +203,12 @@ export function TailorPanel({ onEditRules }: { onEditRules: () => void }) {
           title="The resume was not generated"
           cause={run.error ?? undefined}
           action={
-            <Button variant="secondary" size="sm" onClick={() => void generate()}>
+            <Button
+              variant="secondary"
+              size="sm"
+              data-testid="tailor-retry"
+              onClick={() => void generate()}
+            >
               Try again
             </Button>
           }
