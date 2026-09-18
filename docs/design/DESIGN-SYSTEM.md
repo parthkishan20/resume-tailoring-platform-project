@@ -90,7 +90,7 @@ whole identity, and it is deliberately not the beige-and-brass family the previo
   /* Ink — text ramp, warm near-black, never #000 */
   --ink:              #1c1b19;  /* primary text */
   --ink-secondary:    #55524d;  /* labels, secondary copy */
-  --ink-tertiary:     #8a867f;  /* captions, placeholders, disabled */
+  --ink-tertiary:     #6f6b63;  /* captions, placeholders, disabled. 5.04:1, AA */
 
   /* Rule — borders */
   --rule:             #e2e0da;  /* default hairline */
@@ -100,7 +100,7 @@ whole identity, and it is deliberately not the beige-and-brass family the previo
   --accent:           #2c4ecc;  /* hsl(226 64% 49%) — saturation 64%, under the 80% cap */
   --accent-hover:     #2442b0;
   --accent-active:    #1d3795;
-  --accent-contrast:  #ffffff;  /* text on accent — 7.1:1, AAA */
+  --accent-contrast:  #ffffff;  /* text on accent. 6.84:1, AA */
   --accent-wash:      #eef1fc;  /* selected rows, active nav, subtle fills */
   --accent-edge:      #c3cdf4;  /* borders on accent-washed surfaces */
 
@@ -125,7 +125,7 @@ whole identity, and it is deliberately not the beige-and-brass family the previo
 
   --ink:              #eceaE6;
   --ink-secondary:    #a5a29b;
-  --ink-tertiary:     #6f6c66;
+  --ink-tertiary:     #908d85;  /* 5.44:1, AA */
 
   --rule:             #2c2c33;
   --rule-strong:      #43434c;
@@ -133,7 +133,7 @@ whole identity, and it is deliberately not the beige-and-brass family the previo
   --accent:           #7d97f5;  /* lifted for contrast on dark; same hue family */
   --accent-hover:     #94a9f8;
   --accent-active:    #6b86ec;
-  --accent-contrast:  #10131f;  /* 8.9:1 */
+  --accent-contrast:  #10131f;  /* 6.71:1, AA */
   --accent-wash:      #1c2138;
   --accent-edge:      #333d63;
 
@@ -155,17 +155,28 @@ whole identity, and it is deliberately not the beige-and-brass family the previo
 **The one place the accent is banned:** inside the rendered PDF preview frame. The document owns its
 own color. The chrome around it does not bleed in.
 
-**Contrast budget (verified targets, must be checked before ship):**
+**Contrast budget — MEASURED, corrected 2026-09-18.**
 
-| Pair | Ratio | Standard |
-|---|---|---|
-| `--ink` on `--paper` | 14.8:1 | AAA |
-| `--ink-secondary` on `--paper` | 7.2:1 | AAA |
-| `--ink-tertiary` on `--paper` | 4.6:1 | AA (captions/placeholders only, never body) |
-| `--accent-contrast` on `--accent` | 7.1:1 | AAA |
-| `--accent` on `--paper` | 6.9:1 | AAA (link text, active nav label) |
-| dark `--ink` on dark `--paper` | 13.9:1 | AAA |
-| dark `--accent` on dark `--paper` | 6.4:1 | AA+ |
+The ratios originally written here were estimated, not computed, and five of the eight were wrong.
+One of them, `--ink-tertiary`, did not merely carry a wrong label: at 3.44:1 it **failed AA
+outright**. Task 1.4 computed every pair, corrected the token that failed, and relabelled the rest.
+The values below are measured. Do not edit this table without recomputing.
+
+| Pair | Originally claimed | Measured | Standard |
+|---|---|---|---|
+| `--ink` on `--paper` | 14.8:1 | **16.36:1** | AAA |
+| `--ink-secondary` on `--paper` | 7.2:1 | 7.39:1 | AAA |
+| `--ink-tertiary` on `--paper` | 4.6:1 | **3.44:1 — FAILED** | token changed to `#6f6b63`, now **5.04:1**, AA |
+| `--accent-contrast` on `--accent` | 7.1:1 | **6.84:1** | AA, not AAA |
+| `--accent` on `--paper` | 6.9:1 | **6.50:1** | AA (and 6.9 was never AAA either) |
+| dark `--ink` on dark `--paper` | 13.9:1 | **15.02:1** | AAA |
+| dark `--ink-tertiary` on dark `--paper` | not listed | token changed to `#908d85`, **5.44:1** | AA |
+| dark `--accent` on dark `--paper` | 6.4:1 | 6.55:1 | AA |
+| dark `--accent-contrast` on dark `--accent` | 8.9:1 | **6.71:1** | AA. 8.9 is unreachable: pure black on `#7d97f5` tops out at 7.62:1 |
+
+Only the two `--ink-tertiary` values were changed. Everything else keeps its specified colour and gets
+an honest label, because the design intent still holds at AA and repainting the accent to chase AAA
+would change the identity to satisfy a number that was invented rather than measured.
 
 ### 2.2 Typography
 

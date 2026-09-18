@@ -1,7 +1,25 @@
+/*
+ * Letterpress tokens (docs/design/DESIGN-SYSTEM.md 2.1-2.7). Namespaced
+ * `--lp-*`, so nothing below is overridden. Must stay the first rule in the
+ * file: CSS @import has to precede everything but @charset and @layer.
+ */
+@import "../design-system/tokens.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * DEPRECATED - the "tailor's thread" palette.
+ *
+ * Every token in this :root block is read by the ten components under
+ * src/components/. Task 2.3 (`frontend-shell`) rewrites those components onto
+ * the Letterpress tokens above and is the owner that deletes this block, the
+ * `.seam-dashed` rule, the CodeMirror !important overrides (replaced by the
+ * official theming API, DESIGN-SYSTEM.md section 6), and the matching
+ * unprefixed keys in tailwind.config.ts. Do not delete it before then: the
+ * build fails and ten components lose their palette.
+ */
 :root {
   /* Cloth — layered neutral surfaces */
   --background: #0c0d0f;
@@ -86,4 +104,25 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/*
+ * The Letterpress preview route (/design) and, after task 2.3, the whole app
+ * paint their own ground from the --lp-* tokens. `body` above still carries
+ * the legacy dark background for the ten components that have not moved yet,
+ * so Letterpress surfaces set their own background explicitly rather than
+ * inheriting it.
+ */
+[data-lp-surface] {
+  color-scheme: var(--lp-color-scheme);
+  background-color: var(--lp-paper);
+  color: var(--lp-ink);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Focus, carried forward from the legacy rule above but on the Letterpress
+ * ring token so it stays visible in both themes (section 5). */
+[data-lp-surface] :focus-visible {
+  outline: 2px solid var(--lp-focus-ring);
+  outline-offset: 2px;
 }

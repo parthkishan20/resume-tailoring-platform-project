@@ -1,0 +1,223 @@
+/*
+ * Letterpress design tokens - docs/design/DESIGN-SYSTEM.md sections 2.1 to 2.7.
+ *
+ * NAMESPACE. Every token here is prefixed `--lp-`. The spec writes them
+ * unprefixed (`--paper`, `--ink`, `--accent`), but two of those names
+ * (`--accent`, `--accent-hover`) already exist in `globals.css` holding the
+ * outgoing gold values that ten shipped components still read. Redefining
+ * them would repaint the live app the moment `data-theme` lands on <html>.
+ * The prefix is the collision-free scope task 1.4 was asked to add.
+ *
+ * Task 2.3 deletes the legacy `:root` block in `globals.css`. Once that block
+ * is gone the prefix can be dropped with a single pass over
+ * `src/design-system/` and `src/app/design/` (replace `--lp-` with `--` in
+ * this file, and `lp-` with nothing in the Tailwind utility names), or simply
+ * kept. Nothing outside those two directories reads these tokens, so the
+ * rename is mechanical either way.
+ *
+ * Light is the base definition. Dark is a full swap on [data-theme="dark"],
+ * not a set of per-component overrides.
+ *
+ * The selectors are `:root, [data-theme="light"]` and `[data-theme="dark"]`
+ * rather than the spec's `:root` / `:root[data-theme="dark"]`. Same result
+ * on <html>, and it additionally lets a subtree be pinned to one theme,
+ * which is what makes the side-by-side comparison on /design possible.
+ * Nothing in the product nests themes: section 7 still forbids a page that
+ * inverts one of its own sections.
+ */
+
+:root,
+[data-theme="light"] {
+  /* Applied, not declared, here. `globals.css` puts `color-scheme` on
+   * [data-lp-surface] only. Declaring it on :root would hand the legacy
+   * dark app light scrollbars and light native controls the moment a theme
+   * resolved to light. Task 2.3 moves this back to a plain
+   * `color-scheme: light` on :root once nothing legacy is left. */
+  --lp-color-scheme: light;
+
+  /* --- Paper: warm neutral ramp ---------------------------------------- */
+  --lp-paper: #faf9f7; /* app ground */
+  --lp-paper-raised: #ffffff; /* cards, editor gutter, document surface */
+  --lp-paper-sunken: #f2f1ed; /* inspector, inset wells, code backgrounds */
+  --lp-paper-overlay: #ffffff; /* popovers, dialogs */
+
+  /* --- Ink: text ramp, warm near-black, never #000 ---------------------- */
+  --lp-ink: #1c1b19; /* primary text */
+  --lp-ink-secondary: #55524d; /* labels, secondary copy */
+  /* Spec value #8a867f measures 3.44:1 on --lp-paper, not the 4.6:1 its own
+   * table claims, and section 7 requires placeholders and helper text to pass
+   * AA. Darkened to the lightest value that clears 4.5:1 on all three light
+   * grounds (5.04 paper / 5.30 raised / 4.69 sunken). See the 1.4 report. */
+  --lp-ink-tertiary: #6f6b63; /* captions, placeholders, disabled */
+
+  /* --- Rule: borders ---------------------------------------------------- */
+  --lp-rule: #e2e0da; /* default hairline, decorative */
+  --lp-rule-strong: #c9c6be; /* hover, focused container, emphasis */
+  /* Added, not in the spec. WCAG 1.4.11 wants 3:1 for a boundary that is the
+   * only thing identifying a control; --lp-rule-strong is 1.62:1 on paper.
+   * Inputs, textareas and outlined controls use this instead. 3.31:1 paper /
+   * 3.48:1 raised / 3.08:1 sunken. */
+  --lp-rule-control: #8d8981;
+
+  /* --- Cobalt: the single accent ---------------------------------------- */
+  --lp-accent: #2c4ecc;
+  --lp-accent-hover: #2442b0;
+  --lp-accent-active: #1d3795;
+  --lp-accent-contrast: #ffffff; /* text on accent; 6.84:1, AA not AAA */
+  --lp-accent-wash: #eef1fc; /* selected rows, active nav, subtle fills */
+  --lp-accent-edge: #c3cdf4; /* borders on accent-washed surfaces */
+
+  /* --- Semantic: desaturated to sit in the neutral ramp ------------------ */
+  --lp-positive: #2f6b46;
+  --lp-positive-wash: #e8f2ec;
+  --lp-caution: #8a5a16;
+  --lp-caution-wash: #fbf0e0;
+  --lp-critical: #a3302c;
+  --lp-critical-wash: #fbeceb;
+
+  --lp-focus-ring: var(--lp-accent);
+  /* Modal scrim. Tinted to the paper hue like the shadows, not pure black. */
+  --lp-scrim: rgb(28 27 25 / 0.4);
+  /* Skeleton shimmer sweep. Lives here so no component carries a colour. */
+  --lp-shimmer: linear-gradient(
+    90deg,
+    var(--lp-paper-sunken) 0%,
+    var(--lp-rule) 50%,
+    var(--lp-paper-sunken) 100%
+  );
+
+  /* --- Shape (2.3) ------------------------------------------------------- */
+  --lp-radius-control: 6px; /* buttons, inputs, chips, segments */
+  --lp-radius-surface: 10px; /* cards, panels, dialogs, document frame */
+  --lp-radius-pill: 999px; /* status indicators and keyword chips only */
+
+  /* --- Space (2.4), 4px base --------------------------------------------- */
+  --lp-space-1: 4px;
+  --lp-space-2: 8px;
+  --lp-space-3: 12px;
+  --lp-space-4: 16px;
+  --lp-space-5: 20px;
+  --lp-space-6: 24px;
+  --lp-space-7: 32px;
+  --lp-space-8: 48px;
+
+  /* --- Layout constants (2.4) -------------------------------------------- */
+  --lp-panel-header-h: 52px;
+  --lp-inspector-w: 380px;
+  --lp-inspector-w-min: 320px;
+  --lp-inspector-w-max: 560px;
+  --lp-nav-w: 216px;
+  --lp-nav-w-collapsed: 56px;
+  --lp-control-h: 32px;
+  --lp-control-h-compact: 28px;
+  --lp-control-h-primary: 40px;
+  --lp-section-gap: 20px;
+  --lp-section-gap-onboarding: 96px;
+
+  /* --- Type (2.2) --------------------------------------------------------- */
+  --lp-text-display: clamp(1.75rem, 1.2rem + 2vw, 2.75rem);
+  --lp-text-title: 18px;
+  --lp-text-heading: 15px;
+  --lp-text-body: 14px;
+  --lp-text-label: 13px;
+  --lp-text-caption: 12px; /* the floor; nothing renders below this */
+  --lp-text-code: 13px;
+
+  --lp-leading-display: 1.1;
+  --lp-leading-body: 1.55;
+  --lp-leading-code: 1.6;
+  --lp-leading-tight: 1.25;
+
+  --lp-tracking-display: -0.03em;
+  --lp-tracking-title: -0.015em;
+
+  /* --- Elevation (2.5): tinted to the paper hue, never pure black --------- */
+  --lp-shadow-raised: 0 1px 2px rgb(28 27 25 / 0.05), 0 1px 1px rgb(28 27 25 / 0.03);
+  --lp-shadow-overlay: 0 12px 32px -8px rgb(28 27 25 / 0.14), 0 2px 8px rgb(28 27 25 / 0.06);
+  --lp-shadow-page: 0 1px 3px rgb(28 27 25 / 0.08), 0 8px 24px -12px rgb(28 27 25 / 0.12);
+
+  /* --- Motion (2.7): every duration maps to a row in the 2.7 table -------- */
+  --lp-duration-press: 80ms; /* control :active scale */
+  --lp-duration-swap: 120ms; /* tab/panel content swap */
+  --lp-duration-toast: 160ms; /* toast enter/exit */
+  --lp-duration-dial: 700ms; /* score dial draw-in, once */
+  --lp-duration-shimmer: 1400ms; /* skeleton shimmer loop */
+  --lp-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-theme="dark"] {
+  --lp-color-scheme: dark;
+
+  --lp-paper: #16161a; /* off-black, never #000 */
+  --lp-paper-raised: #1e1e23;
+  --lp-paper-sunken: #111114;
+  --lp-paper-overlay: #26262c;
+
+  --lp-ink: #eceae6;
+  --lp-ink-secondary: #a5a29b;
+  /* Spec value #6f6c66 measures 3.45:1 on dark --paper and 2.87:1 on
+   * --paper-overlay. Lifted to clear 4.5:1 on all four dark grounds
+   * (5.44 paper / 5.01 raised / 5.69 sunken / 4.54 overlay). */
+  --lp-ink-tertiary: #908d85;
+
+  --lp-rule: #2c2c33;
+  --lp-rule-strong: #43434c;
+  /* 3.75 paper / 3.45 raised / 3.91 sunken / 3.12 overlay */
+  --lp-rule-control: #71717d;
+
+  --lp-accent: #7d97f5; /* lifted for contrast on dark; same hue family */
+  --lp-accent-hover: #94a9f8;
+  --lp-accent-active: #6b86ec;
+  --lp-accent-contrast: #10131f; /* 6.71:1, AA; the spec claims 8.9:1 */
+  --lp-accent-wash: #1c2138;
+  --lp-accent-edge: #333d63;
+
+  --lp-positive: #6cc48f;
+  --lp-positive-wash: #17251d;
+  --lp-caution: #dba459;
+  --lp-caution-wash: #2a2015;
+  --lp-critical: #f08c88;
+  --lp-critical-wash: #2b1817;
+
+  --lp-focus-ring: var(--lp-accent);
+  --lp-scrim: rgb(0 0 0 / 0.6);
+  --lp-shimmer: linear-gradient(
+    90deg,
+    var(--lp-paper-sunken) 0%,
+    var(--lp-rule-strong) 50%,
+    var(--lp-paper-sunken) 100%
+  );
+
+  /* Shadows on a dark ground carry no paper tint to pick up, so they go to
+   * near-black and lean harder on the hairlines. */
+  --lp-shadow-raised: 0 1px 2px rgb(0 0 0 / 0.4), 0 1px 1px rgb(0 0 0 / 0.3);
+  --lp-shadow-overlay: 0 12px 32px -8px rgb(0 0 0 / 0.6), 0 2px 8px rgb(0 0 0 / 0.4);
+  --lp-shadow-page: 0 1px 3px rgb(0 0 0 / 0.5), 0 8px 24px -12px rgb(0 0 0 / 0.55);
+}
+
+/* Skeleton shimmer: the one permitted infinite loop (2.7). */
+@keyframes lp-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/*
+ * Reduced motion. `globals.css` already collapses animation and transition
+ * durations globally, which is carried forward. This adds the two things a
+ * duration clamp cannot reach: the shimmer stops rather than running fast,
+ * and pressed controls stop scaling.
+ */
+@media (prefers-reduced-motion: reduce) {
+  [data-lp-shimmer] {
+    animation: none !important;
+    background-position: 0 0 !important;
+  }
+
+  [data-lp-press]:active {
+    transform: none !important;
+  }
+}
