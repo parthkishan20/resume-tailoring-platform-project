@@ -11,6 +11,7 @@ from resumetailor.api.schemas.errors import error_responses
 from resumetailor.backend_api import BackendAPI
 from resumetailor.deps import get_backend
 from resumetailor.core.errors import BackendError
+from resumetailor.core.metrics import sse_stream_tracker
 from resumetailor.core.security import MAX_JOB_DESCRIPTION_CHARS, MAX_RESUME_YAML_CHARS
 from resumetailor.domain.evaluation import evaluate
 
@@ -73,26 +74,27 @@ async def evaluate_stream(body: EvaluateRequest, api: BackendAPI = Depends(get_b
     frames them.
     """
     async def event_gen():
-        try:
-            yield _sse("progress", {"message": _PROGRESS_MESSAGE})
-            result = await evaluate(
-                api,
-                yaml_content=body.yaml_content,
-                job_description=body.job_description,
-            )
-            yield _sse("done", {"result": result.model_dump()})
-        # One branch for every domain error, keyed on `exc.code`: see
-        # `_error_frame`. The two it replaces caught two classes and named two
-        # literals, so an error class added anywhere else in the application
-        # fell through to the generic branch below.
-        except BackendError as exc:
-            yield _error_frame(exc)
-        except Exception:
-            # Includes a provider that answered something other than the
-            # schema it was given: a `ValidationError` from the service. Its
-            # text quotes the response, so it is logged, not sent.
-            logger.exception("sse evaluation failed", extra={"error_code": "EVALUATION_FAILED"})
-            yield _sse("error", {"error": BackendError.client_message, "code": "EVALUATION_FAILED"})
+        async with sse_stream_tracker.track():
+            try:
+                yield _sse("progress", {"message": _PROGRESS_MESSAGE})
+                result = await evaluate(
+                    api,
+                    yaml_content=body.yaml_content,
+                    job_description=body.job_description,
+                )
+                yield _sse("done", {"result": result.model_dump()})
+            # One branch for every domain error, keyed on `exc.code`: see
+            # `_error_frame`. The two it replaces caught two classes and named
+            # two literals, so an error class added anywhere else in the
+            # application fell through to the generic branch below.
+            except BackendError as exc:
+                yield _error_frame(exc)
+            except Exception:
+                # Includes a provider that answered something other than the
+                # schema it was given: a `ValidationError` from the service.
+                # Its text quotes the response, so it is logged, not sent.
+                logger.exception("sse evaluation failed", extra={"error_code": "EVALUATION_FAILED"})
+                yield _sse("error", {"error": BackendError.client_message, "code": "EVALUATION_FAILED"})
 
     return StreamingResponse(event_gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache"})

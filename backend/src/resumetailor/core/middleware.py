@@ -39,6 +39,7 @@ from resumetailor.core.errors import (
     error_response,
 )
 from resumetailor.core.logging import request_id_var
+from resumetailor.core.metrics import record_request
 from resumetailor.core.security import (
     RATE_LIMITED_PATHS,
     UPLOAD_PATHS,
@@ -60,8 +61,9 @@ security_logger = logging.getLogger("resumetailor.security")
 REQUEST_ID_HEADER = "x-request-id"
 
 #: Paths that would otherwise fill the log with one line every few seconds.
-#: The container healthcheck hits /api/health on a 30s interval.
-_QUIET_PATHS = frozenset({"/api/health"})
+#: The container healthcheck hits /api/health on a 30s interval; a readiness
+#: probe and a metrics scraper poll on a similar cadence (PLAN.md D-58).
+_QUIET_PATHS = frozenset({"/api/health", "/api/health/ready", "/api/metrics"})
 
 
 class RequestContextMiddleware:
@@ -91,19 +93,33 @@ class RequestContextMiddleware:
             await self.app(scope, receive, send_with_request_id)
         finally:
             path = scope.get("path", "")
+            method = scope.get("method", "-")
+            duration_s = time.perf_counter() - started
             level = logging.DEBUG if path in _QUIET_PATHS else logging.INFO
             logger.log(
                 level,
                 "%s %s %s",
-                scope.get("method", "-"),
+                method,
                 path,
                 status,
                 extra={
-                    "http_method": scope.get("method", "-"),
+                    "http_method": method,
                     "http_path": path,
                     "http_status": status,
-                    "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                    "duration_ms": round(duration_s * 1000, 2),
                 },
+            )
+            # The *route template* (`/api/resumes/{resume_id}`), not `path`:
+            # a metrics label is a low-cardinality dimension, and one series
+            # per resume id would not be. `scope["route"]` is set in place by
+            # Starlette's router, deeper in the chain `self.app` just
+            # returned from, so it is populated here whenever a route
+            # matched; a 404 with no match falls back to "unmatched" rather
+            # than the raw path, for the same cardinality reason.
+            route = scope.get("route")
+            path_label = route.path if route is not None else "unmatched"
+            record_request(
+                method=method, path=path_label, status=status, duration_s=duration_s
             )
             request_id_var.reset(token)
 

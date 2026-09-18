@@ -15,7 +15,10 @@ export interface paths {
     get: operations["get_history_api_chat_get"];
     put?: never;
     post?: never;
-    /** Clear History */
+    /**
+     * Clear History
+     * @description Delete every chat message. 204: nothing is left to describe (D-58).
+     */
     delete: operations["clear_history_api_chat_delete"];
     options?: never;
     head?: never;
@@ -69,8 +72,45 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Health */
+    /**
+     * Health
+     * @description The process is up and can answer HTTP. Touches nothing else.
+     *
+     *     Deliberately does not check the database: an orchestrator that restarts a
+     *     process on a *liveness* failure is trying to recover from a stuck or
+     *     deadlocked process, and a database outage is not that — restarting this
+     *     process fixes nothing and produces a restart loop instead. See
+     *     `/api/health/ready` for the check that does look at dependencies.
+     */
     get: operations["health_api_health_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/health/ready": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Ready
+     * @description Can this process serve a real request right now.
+     *
+     *     Checks the database (a real query, not "is the file present" — D-58's
+     *     motivating case is a *corrupt* database, which opens fine and fails on the
+     *     first statement) and `PDFS_DIR` (present and writable, since every
+     *     generation ends in a write there). Both run inline rather than through
+     *     `asyncio.to_thread`: each is a handful of milliseconds and a readiness
+     *     probe that itself spawns a thread per poll is not simpler than one that
+     *     blocks the loop for a few milliseconds every few seconds.
+     */
+    get: operations["ready_api_health_ready_get"];
     put?: never;
     post?: never;
     delete?: never;
@@ -91,7 +131,10 @@ export interface paths {
     /** Save Resume */
     put: operations["save_resume_api_master_resume_put"];
     post?: never;
-    /** Remove Resume */
+    /**
+     * Remove Resume
+     * @description Delete the master resume. 204: the row is gone, not reset (D-58).
+     */
     delete: operations["remove_resume_api_master_resume_delete"];
     options?: never;
     head?: never;
@@ -184,6 +227,11 @@ export interface paths {
      *     The work is `domain.tailoring`; this handler reads what the pipeline needs,
      *     turns each `Stage` into the progress frame the frontend expects, and hands
      *     the result to the one function that writes it.
+     *
+     *     Wrapped in `sse_stream_tracker.track()` (task 3.5) for the whole of its
+     *     body: the lifespan's shutdown waits on this counter so a generation in
+     *     progress is not cut off mid-stream, and the same count backs
+     *     `resumetailor_sse_streams_active`. See `main.py`'s `lifespan`.
      */
     post: operations["generate_resume_stream_api_resumes_stream_post"];
     delete?: never;
@@ -203,7 +251,10 @@ export interface paths {
     get: operations["get_generated_api_resumes__resume_id__get"];
     put?: never;
     post?: never;
-    /** Delete Generated */
+    /**
+     * Delete Generated
+     * @description Delete a generated resume and its PDF. 204: both are gone (D-58).
+     */
     delete: operations["delete_generated_api_resumes__resume_id__delete"];
     options?: never;
     head?: never;
@@ -270,7 +321,16 @@ export interface paths {
     /** Update */
     put: operations["update_api_rules_put"];
     post?: never;
-    /** Reset */
+    /**
+     * Reset
+     * @description Reset to the default rules. 200 with the new state, not 204 (D-58).
+     *
+     *     This is a reset, not a delete: `generation_rules` still exists and is
+     *     non-empty afterwards, so returning 204 would say "gone" about a resource
+     *     that immediately has a new value the caller has to re-fetch to see. See
+     *     `system_prompt.py::reset` (the other one) and
+     *     `docs/adr/0007-delete-verb-status-code-convention.md`.
+     */
     delete: operations["reset_api_rules_delete"];
     options?: never;
     head?: never;
@@ -289,7 +349,13 @@ export interface paths {
     /** Update */
     put: operations["update_api_system_prompt_put"];
     post?: never;
-    /** Reset */
+    /**
+     * Reset
+     * @description Reset to the default system prompt. 200 with the new state (D-58).
+     *
+     *     Same convention as `rules.py::reset`: this row still exists after the
+     *     call, with a new value, so the response is 200 and the body, not 204.
+     */
     delete: operations["reset_api_system_prompt_delete"];
     options?: never;
     head?: never;
@@ -362,6 +428,16 @@ export interface components {
       action: components["schemas"]["ChatAction"] | null;
       /** Text */
       text: string;
+    };
+    /**
+     * CheckResult
+     * @description One dependency's readiness check.
+     */
+    CheckResult: {
+      /** Detail */
+      detail?: string | null;
+      /** Ok */
+      ok: boolean;
     };
     /**
      * @description Every `code` this API can send, on an HTTP error body or in an SSE `event: error` frame. Compare against it; do not assume it is exhaustive at runtime, since a server newer than the client can send one that is not listed here.
@@ -542,6 +618,24 @@ export interface components {
     MasterResumeBody: {
       /** Yaml Content */
       yaml_content: string;
+    };
+    /**
+     * ReadinessResponse
+     * @description Whether this process can currently serve a real request.
+     *
+     *     `checks` is always both keys, whether or not they passed, so a caller can
+     *     tell "the database check failed" from "the database check never ran."
+     */
+    ReadinessResponse: {
+      /** Checks */
+      checks: {
+        [key: string]: components["schemas"]["CheckResult"];
+      };
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "ok" | "unavailable";
     };
     /**
      * RequestValidationDetail
@@ -891,6 +985,35 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["HealthResponse"];
+        };
+      };
+    };
+  };
+  ready_api_health_ready_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReadinessResponse"];
+        };
+      };
+      /** @description At least one dependency check failed. Same body shape as the 200, with the failing entries' `ok` false. */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReadinessResponse"];
         };
       };
     };

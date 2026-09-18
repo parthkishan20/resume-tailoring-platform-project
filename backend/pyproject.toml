@@ -18,6 +18,11 @@ dependencies = [
     # through rendercv until task 1.3 declared them (D-19).
     "phonenumbers>=9.0.0",
     "pyyaml>=6.0.0",
+    # Metrics (PLAN.md D-58, task 3.5). Pure Python, no transitive
+    # dependencies, no server of its own: `api/routers/metrics.py` calls
+    # `generate_latest()` and returns the text from this process's own ASGI
+    # stack, so this does not add a second listening port.
+    "prometheus-client>=0.20.0",
 ]
 
 [dependency-groups]

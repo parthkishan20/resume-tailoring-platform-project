@@ -67,6 +67,26 @@ class Settings(BaseSettings):
     # reading the terminal.
     LOG_FORMAT: Literal["json", "text"] = "json"
 
+    # Whether `/docs`, `/redoc` and `/openapi.json` are served (PLAN.md D-58).
+    # True today because there is no auth model yet (D4/B-03 are open) and a
+    # single-user deployment gains nothing from hiding its own contract from
+    # itself; the lever exists so that decision does not require a code change
+    # once D4 lands. See docs/adr/0006-docs-gated-by-setting.md.
+    API_DOCS_ENABLED: bool = True
+
+    # How long the lifespan waits, after receiving shutdown, for in-flight SSE
+    # streams (generation, chat, evaluation) to finish on their own before it
+    # returns and uvicorn tears the connections down. Generous relative to
+    # `LLM_TIMEOUT_S` because a stream is two provider calls plus a render.
+    GRACEFUL_SHUTDOWN_TIMEOUT_S: float = Field(default=60.0, gt=0)
+
+    # How often the orphan reaper re-scans `generated_resumes` against
+    # `PDFS_DIR` after its one guaranteed run at startup (PLAN.md D-20). Orphans
+    # accumulate only from a crash mid-write, not from normal operation, so
+    # hourly is frequent enough to bound disk growth without a rate that
+    # crowds `PDFS_DIR`'s directory listing in the log.
+    REAPER_INTERVAL_S: float = Field(default=3600.0, gt=0)
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
