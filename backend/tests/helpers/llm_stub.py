@@ -35,6 +35,7 @@ import json
 from collections.abc import AsyncIterator
 from typing import Literal
 
+from resumetailor.llm.stub import _echo_candidate_cv
 from resumetailor.llm.stub import (
     MOCK_CHAT_RESULT as CANNED_CHAT_RESULT,
 )
@@ -90,8 +91,7 @@ def respond(messages: list[dict], response_format: dict | None = None) -> str:
         user_content = next(
             (m["content"] for m in reversed(messages) if m.get("role") == "user"), ""
         )
-        start = user_content.find("cv:")
-        return user_content[start:] if start != -1 else CANNED_RESUME_YAML
+        return _echo_candidate_cv(user_content)
 
     if shape == "evaluation":
         return json.dumps(CANNED_EVALUATION_RESULT)

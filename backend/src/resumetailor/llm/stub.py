@@ -158,6 +158,24 @@ MOCK_EXTRACTED_TEXT: str = (
 # ── Tier 1: SimulatedBackendAPI ─────────────────────────────────────────────
 
 
+def _echo_candidate_cv(user_content: str) -> str:
+    """Isolate the audit prompt's candidate ``cv:`` block.
+
+    D-74: `domain.tailoring.tailor`'s audit prompt is
+    "Draft:\\n{cv}\\n\\nMaster:\\n{cv}\\n\\nJD:\\n{...}" -- the candidate
+    draft's own "cv:" key is found first, but slicing to the end of the
+    string used to carry the trailing Master and JD sections along with it,
+    so the "echoed" result had two top-level `cv:` blocks and failed
+    `resume_schema.validate`. Stop at the known section boundary instead of
+    echoing everything after the match.
+    """
+    start = user_content.find("cv:")
+    if start == -1:
+        return MOCK_GENERATION_RESULT_YAML
+    end = user_content.find("\n\nMaster:", start)
+    return user_content[start:end] if end != -1 else user_content[start:]
+
+
 class SimulatedBackendAPI:
     """Deterministic E2E mock. Activated when LLM_MOCK=true."""
 
@@ -178,8 +196,7 @@ class SimulatedBackendAPI:
                 (m["content"] for m in reversed(messages) if m.get("role") == "user"),
                 "",
             )
-            start = user_content.find("cv:")
-            return user_content[start:] if start != -1 else MOCK_GENERATION_RESULT_YAML
+            return _echo_candidate_cv(user_content)
         if "evaluation" in system.lower():
             return json.dumps(MOCK_EVALUATION_RESULT)
         # PDF import (has response_format schema) or chat

@@ -167,6 +167,37 @@ async def test_stub_complete_routes_audit_prompt_echoes_cv_from_user_message():
 
 
 @pytest.mark.anyio
+async def test_stub_complete_routes_audit_prompt_does_not_echo_trailing_sections():
+    """Regression for D-74.
+
+    The real audit prompt (``domain.tailoring.tailor``) is
+    ``f"Draft:\\n{draft.yaml}\\n\\nMaster:\\n{master.yaml}\\n\\nJD:\\n{jd}"``.
+    Slicing from the draft's own ``cv:`` key to the end of the string used to
+    carry the Master section's ``cv:`` key (and the JD text) along with it,
+    so the "echoed" result had two top-level ``cv:`` blocks -- invalid YAML
+    under ``resume_schema.validate``.
+    """
+    stub = SimulatedBackendAPI()
+    result = await stub.complete(
+        [
+            {"role": "system", "content": "You are ResumeAuditor."},
+            {
+                "role": "user",
+                "content": (
+                    "Draft:\ncv:\n  name: Draft User\n\n"
+                    "Master:\ncv:\n  name: Master User\n\n"
+                    "JD:\nSenior Engineer"
+                ),
+            },
+        ]
+    )
+    assert result == "cv:\n  name: Draft User"
+    assert result.count("cv:") == 1
+    assert "Master User" not in result
+    assert "Senior Engineer" not in result
+
+
+@pytest.mark.anyio
 async def test_stub_complete_audit_prompt_falls_back_when_no_cv_marker():
     stub = SimulatedBackendAPI()
     result = await stub.complete(
