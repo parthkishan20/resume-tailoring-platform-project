@@ -3,11 +3,25 @@ services:
   app:
     build: .
     image: resumetailor
+    # PLAN.md D4 / D-28, docs/adr/0004-no-auth-loopback-only.md. There is no
+    # authentication on any endpoint, so the host-side publish is the access
+    # control: bound to 127.0.0.1, nothing off this machine can reach the API.
+    # `"8000:8000"` binds every host interface and opens the whole application
+    # to any shared network. Do not widen this without solving auth first.
+    #
+    # The in-container uvicorn bind stays 0.0.0.0 and must not be "fixed": the
+    # Docker bridge cannot reach a process bound to the container's loopback.
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - resumedb-data:/app/db
       - resumepdf-data:/app/pdfs
+    # D-50: the render scratch directory. `tempfile.TemporaryDirectory()` in
+    # rendering/runner.py writes the model-authored YAML and everything Typst
+    # produces from it under /tmp; on tmpfs that never touches the container's
+    # writable layer and is gone when the container stops.
+    tmpfs:
+      - /tmp
     env_file:
       - .env
     restart: unless-stopped

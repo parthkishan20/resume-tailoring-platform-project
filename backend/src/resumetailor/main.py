@@ -5,8 +5,9 @@ what the test client mounts. It is built by :func:`create_app`, which is the
 only place that knows the assembly order:
 
 1. configure logging, before anything else can fail silently;
-2. install the request-context middleware, so every line logged below it
-   carries a request id;
+2. install the rate limiter and the body-size cap, then the request-context
+   middleware, so every line logged below them carries a request id and so
+   does a refusal from either limiter (see ``install_security_middleware``);
 3. install the domain error handlers;
 4. register the routers;
 5. mount the frontend export last, because it claims ``/``.
@@ -46,6 +47,7 @@ from resumetailor.core.config import (
 from resumetailor.core.errors import install_error_handlers
 from resumetailor.core.logging import configure_logging
 from resumetailor.core.middleware import RequestContextMiddleware
+from resumetailor.core.security import install_security_middleware
 from resumetailor.deps import get_backend
 
 # `get_backend` is re-exported: the route tests override it as a FastAPI
@@ -102,6 +104,11 @@ def create_app() -> FastAPI:
     configure_logging(settings)
 
     app = FastAPI(title="ResumeTailor API", lifespan=lifespan)
+    # Order is load-bearing. `add_middleware` inserts at the front of the
+    # stack, so the *last* one added is the outermost: the rate limiter and the
+    # body cap go on first precisely so that the request-context middleware
+    # ends up outside them and a 429 or 413 still carries a request id.
+    install_security_middleware(app)
     app.add_middleware(RequestContextMiddleware)
     install_error_handlers(app)
 

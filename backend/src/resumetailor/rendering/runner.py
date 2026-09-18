@@ -29,6 +29,7 @@ import tempfile
 from pathlib import Path
 
 from resumetailor.core.errors import RenderError
+from resumetailor.core.security import subprocess_env
 from resumetailor.rendering.config import RenderProfile, get_render_profile
 
 logger = logging.getLogger(__name__)
@@ -99,6 +100,11 @@ class RenderCVAdapter:
                 *command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                # D-49's other half. Without an explicit `env`, the child
+                # inherits the whole parent environment, and `env_file: .env`
+                # in docker-compose.yml means OPENAI_API_KEY is a real variable
+                # in that environment whatever the LLM adapter does with it.
+                env=subprocess_env(),
             )
             timeout = self._profile.timeout_s
             try:
