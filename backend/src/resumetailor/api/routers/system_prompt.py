@@ -2,8 +2,10 @@
 import asyncio
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+from resumetailor.api.schemas.errors import error_responses
 from resumetailor.core.config import get_settings
 from resumetailor.core.security import MAX_SYSTEM_PROMPT_CHARS
+from resumetailor.db.models import SystemPrompt
 from resumetailor.db.repositories import (
     get_system_prompt,
     upsert_system_prompt,
@@ -21,7 +23,11 @@ class SystemPromptBody(BaseModel):
     content: str = Field(max_length=MAX_SYSTEM_PROMPT_CHARS)
 
 
-@router.get("/api/system-prompt")
+@router.get(
+    "/api/system-prompt",
+    response_model=SystemPrompt,
+    responses=error_responses(404),
+)
 async def get():
     row = await asyncio.to_thread(get_system_prompt, _db_path())
     if row is None:
@@ -29,11 +35,15 @@ async def get():
     return row
 
 
-@router.put("/api/system-prompt")
+@router.put(
+    "/api/system-prompt",
+    response_model=SystemPrompt,
+    responses=error_responses(413, 422),
+)
 async def update(body: SystemPromptBody):
     return await asyncio.to_thread(upsert_system_prompt, _db_path(), body.content)
 
 
-@router.delete("/api/system-prompt")
+@router.delete("/api/system-prompt", response_model=SystemPrompt)
 async def reset():
     return await asyncio.to_thread(reset_system_prompt, _db_path())

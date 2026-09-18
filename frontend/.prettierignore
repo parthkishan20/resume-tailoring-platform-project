@@ -13,7 +13,10 @@ package-lock.json
 #
 # Task 2.3 removed two entries by rewriting the files rather than by exempting
 # them: `src/app/globals.css`, and `src/components/WorkstationShell.tsx`, which
-# no longer exists. Everything left belongs to a task that has not run yet.
+# no longer exists. Task 2.2 removed three the same way: `src/lib/api.ts` is
+# gone (replaced by `src/lib/api/`), and `src/lib/sse.ts` and
+# `src/lib/types.ts` were rewritten. Everything left belongs to a task that
+# has not run yet.
 next.config.js
 tsconfig.json
 src/components/ChatPanel.tsx
@@ -25,8 +28,5 @@ src/components/PdfPreview.tsx
 src/components/ResumeListPanel.tsx
 src/components/ui/Button.tsx
 src/components/ui/ConfirmButton.tsx
-src/lib/api.ts
-src/lib/sse.ts
-src/lib/types.ts
 src/__tests__/MasterResumePanel.test.tsx
 src/__tests__/ResumeListPanel.test.tsx

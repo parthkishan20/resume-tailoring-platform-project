@@ -517,8 +517,8 @@ async def test_provider_exception_text_does_not_reach_the_client(client, sim, ca
     The marker this test carried (``xfail(strict=True)``) is gone: both SSE
     routes below now frame ``exc.client_message`` and log the detail, exactly
     as ``error_response`` does for a non-streaming route.
-    ``test_chat_stream_still_leaks_provider_exception_text`` below is the same
-    assertion against the third streaming route, which is still open.
+    ``test_chat_stream_does_not_leak_provider_exception_text`` below is the
+    same assertion against the third streaming route, closed by task 2.2.
     """
     leak = "litellm.APIError: POST https://api.openai.com/v1/chat key=sk-xyz"
     sim.sim_llm.set_complete_error(LLMUnavailableError(leak))
@@ -559,20 +559,26 @@ async def test_generation_stream_does_not_leak_provider_exception_text(
     ), "the detail must be logged even though the client never sees it"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "D-53's remaining residual. `api/routers/chat.py` is the third "
-        "streaming route and was outside both task 2.4's and task 2.5's file "
-        "ownership, so it still puts str(exc) in the SSE error frame. Whoever "
-        "owns that file next replaces it with exc.client_message, at which "
-        "point this passes and xfail_strict fails the build so the marker gets "
-        "removed."
-    ),
-)
 @pytest.mark.anyio
-async def test_chat_stream_still_leaks_provider_exception_text(client, sim):
+async def test_chat_stream_does_not_leak_provider_exception_text(client, sim, caplog):
+    """D-53's last streaming route, closed by task 2.2.
+
+    This carried `xfail(strict=True)` through tasks 2.4 and 2.5: `chat.py` was
+    outside both of their file ownership and was the one stream still framing
+    `str(exc)`. The marker is gone because the route now goes through an
+    `_error_frame` helper like its two siblings, and the assertions below are
+    theirs: the client gets the fixed sentence, the operator gets the detail in
+    a log record, and the code is the raised exception's own.
+    """
     leak = "litellm.APIError: POST https://api.openai.com/v1/chat key=sk-xyz"
     sim.sim_llm.set_stream_error(LLMUnavailableError(leak))
-    response = await client.post("/api/chat/stream", json={"message": "hi"})
+
+    with caplog.at_level("ERROR"):
+        response = await client.post("/api/chat/stream", json={"message": "hi"})
+
     assert leak not in response.text
+    assert LLMUnavailableError.client_message in response.text
+    assert '"code": "LLM_UNAVAILABLE"' in response.text
+    assert any(
+        getattr(record, "error_detail", None) == leak for record in caplog.records
+    ), "the detail must be logged even though the client never sees it"

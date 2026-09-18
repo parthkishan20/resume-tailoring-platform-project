@@ -10,7 +10,9 @@ only place that knows the assembly order:
    does a refusal from either limiter (see ``install_security_middleware``);
 3. install the domain error handlers;
 4. register the routers;
-5. mount the frontend export last, because it claims ``/``.
+5. replace the generated OpenAPI document with the corrected one, which needs
+   every router already registered (see ``api/openapi.py``);
+6. mount the frontend export last, because it claims ``/``.
 
 Startup work that can fail on a misconfigured host — a missing API key, an
 unwritable volume — happens in the lifespan, not at import, so a broken
@@ -29,6 +31,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from resumetailor.api.openapi import API_TITLE, install_openapi
 from resumetailor.api.routers import (
     chat,
     evaluate,
@@ -103,7 +106,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
     configure_logging(settings)
 
-    app = FastAPI(title="ResumeTailor API", lifespan=lifespan)
+    app = FastAPI(title=API_TITLE, lifespan=lifespan)
     # Order is load-bearing. `add_middleware` inserts at the front of the
     # stack, so the *last* one added is the outermost: the rate limiter and the
     # body cap go on first precisely so that the request-context middleware
@@ -114,6 +117,11 @@ def create_app() -> FastAPI:
 
     for module in _ROUTER_MODULES:
         app.include_router(module.router)
+
+    # After the routers, because it reads `app.routes`: the three streaming
+    # routes have no `response_model` to generate a 200 from, so their bodies
+    # are described from `api/schemas/sse.py` instead (D-54, D-55).
+    install_openapi(app)
 
     # Mounted last: `/` with html=True matches everything the routers did not.
     # Absent in a source checkout that has never built the frontend.

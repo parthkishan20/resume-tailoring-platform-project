@@ -64,6 +64,11 @@ module.exports = {
       //   no-unsafe-call          0
       //   no-floating-promises    5      D-40: no AbortController anywhere.
       //                                  Closed by 2.2.
+      //
+      // 2.2 shipped, and the override directly below this one turns all six of
+      // those rules back on for `src/lib/api/**`. They stay off for the rest
+      // of these paths only because the call sites there have not moved to the
+      // new client yet; that is 3.1's and 3.2's work, not another exemption.
       //   no-unused-vars          1      One dead `Button` import in
       //                                  ResumeListPanel.tsx. Task 0.15.
       files: [
@@ -82,6 +87,30 @@ module.exports = {
         "@typescript-eslint/no-unsafe-call": "off",
         "@typescript-eslint/no-floating-promises": "off",
         "@typescript-eslint/no-unused-vars": "off",
+      },
+    },
+    {
+      // --- THE EXEMPTION ABOVE, CANCELLED FOR NEW CODE ---------------------
+      // `src/lib/api/**` is task 2.2's typed client, and it is what closes the
+      // two defects the block above suspends rules for: D-60 (no runtime
+      // validation of any API response) and D-40 (no AbortController
+      // anywhere). It happens to live under `src/lib/`, so it would inherit
+      // the legacy exemption and be written under exactly the rules it exists
+      // to make satisfiable. Turned back on here, for this directory only. The
+      // rest of `src/lib/` stays exempt until task 0.15 and its owners run.
+      files: ["src/lib/api/**/*.ts"],
+      excludedFiles: ["src/lib/api/generated/*"],
+      rules: {
+        "@typescript-eslint/no-unsafe-assignment": "error",
+        "@typescript-eslint/no-unsafe-member-access": "error",
+        "@typescript-eslint/no-unsafe-argument": "error",
+        "@typescript-eslint/no-unsafe-return": "error",
+        "@typescript-eslint/no-unsafe-call": "error",
+        "@typescript-eslint/no-floating-promises": "error",
+        "@typescript-eslint/no-unused-vars": [
+          "error",
+          { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+        ],
       },
     },
     {
