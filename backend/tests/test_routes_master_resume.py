@@ -3,25 +3,13 @@ from app.simulator import MOCK_IMPORT_YAML
 
 
 @pytest.mark.anyio
-async def test_get_master_resume_404_when_empty(client, tmp_path, monkeypatch):
-    monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
-    from app.config import get_settings
-    get_settings.cache_clear()
-    from app.database import init_db
-    import asyncio
-    await asyncio.to_thread(init_db, str(tmp_path / "test.db"))
+async def test_get_master_resume_404_when_empty(client):
     response = await client.get("/api/master-resume")
     assert response.status_code == 404
 
 
 @pytest.mark.anyio
-async def test_put_master_resume_creates(client, tmp_path, monkeypatch):
-    monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
-    from app.config import get_settings
-    get_settings.cache_clear()
-    from app.database import init_db
-    import asyncio
-    await asyncio.to_thread(init_db, str(tmp_path / "test.db"))
+async def test_put_master_resume_creates(client):
     response = await client.put(
         "/api/master-resume",
         json={"yaml_content": "cv:\n  name: Test"}
@@ -31,26 +19,14 @@ async def test_put_master_resume_creates(client, tmp_path, monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_delete_master_resume(client, tmp_path, monkeypatch):
-    monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
-    from app.config import get_settings
-    get_settings.cache_clear()
-    from app.database import init_db
-    import asyncio
-    await asyncio.to_thread(init_db, str(tmp_path / "test.db"))
+async def test_delete_master_resume(client):
     await client.put("/api/master-resume", json={"yaml_content": "cv:\n  name: Test"})
     response = await client.delete("/api/master-resume")
     assert response.status_code == 204
 
 
 @pytest.mark.anyio
-async def test_preview_master_resume(client, sim, tmp_path, monkeypatch):
-    monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
-    from app.config import get_settings
-    get_settings.cache_clear()
-    from app.database import init_db
-    import asyncio
-    await asyncio.to_thread(init_db, str(tmp_path / "test.db"))
+async def test_preview_master_resume(client, sim):
     # First save a master resume
     await client.put("/api/master-resume", json={"yaml_content": "cv:\n  name: Test"})
     # Then preview it
@@ -61,13 +37,7 @@ async def test_preview_master_resume(client, sim, tmp_path, monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_preview_master_resume_not_found(client, tmp_path, monkeypatch):
-    monkeypatch.setenv("DB_PATH", str(tmp_path / "empty.db"))
-    from app.config import get_settings
-    get_settings.cache_clear()
-    from app.database import init_db
-    import asyncio
-    await asyncio.to_thread(init_db, str(tmp_path / "empty.db"))
+async def test_preview_master_resume_not_found(client):
     response = await client.get("/api/master-resume/preview")
     assert response.status_code == 404
 

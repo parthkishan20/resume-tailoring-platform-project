@@ -4,34 +4,51 @@
 FROM node:20-slim AS frontend-builder
 
 WORKDIR /build/frontend
-COPY frontend/package*.json ./
+
+# Dependency layer first. Rebuilt only when the manifests change.
+COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --quiet
-COPY frontend/ ./
+
+# Then the build inputs, named individually. Copying `frontend/` wholesale
+# would drop the host's darwin `node_modules` on top of the linux tree just
+# installed above (PLAN.md D-35). If you add a new top-level build input
+# (a `public/` directory, another config file), add it here.
+COPY frontend/next.config.js frontend/tsconfig.json frontend/postcss.config.js frontend/tailwind.config.ts ./
+COPY frontend/src ./src
+
 RUN npm run build
 
 
 # ── Stage 2: Python runtime ──────────────────────────────────────────────────
 FROM python:3.12-slim
 
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
 
-WORKDIR /app
+# uv, pinned by version and digest. A floating tag here would silently change
+# the tool that resolves the entire dependency tree.
+COPY --from=ghcr.io/astral-sh/uv:0.11.11@sha256:798712e57f879c5393777cbda2bb309b29fcdeb0532129d4b1c3125c5385975a /uv /usr/local/bin/uv
 
-# Copy backend source and lockfile
-COPY backend/ ./backend/
-
-# Install Python dependencies (rendercv pulls in typst automatically — no texlive needed)
 WORKDIR /app/backend
+
+# Dependency layer: manifests only, so editing backend source does not force a
+# re-resolve of the ~80-package tree. `resumetailor-backend` is a virtual
+# project in uv.lock (`source = { virtual = "." }`), so uv sync needs no source.
+# rendercv[full] ships Typst as a pip wheel — no apt-get layer, no TeX Live.
+COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --frozen --no-dev
 
-# Copy frontend static export into backend/static/
+# Application source, named individually so the host's conda/darwin
+# `backend/.venv` cannot ride along (PLAN.md D-36).
+COPY backend/app ./app
+COPY backend/db ./db
+COPY backend/rendercv_config ./rendercv_config
+
+# Frontend static export, served by FastAPI at / (main.py:68-70).
 COPY --from=frontend-builder /build/frontend/out ./static/
 
-# Runtime directories for volumes
-RUN mkdir -p /app/db /app/pdfs
-
-WORKDIR /app/backend
+# /app/db and /app/pdfs are created at lifespan startup (main.py:23-24) and are
+# volume mount points in docker-compose.yml.
 
 EXPOSE 8000
 

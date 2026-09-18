@@ -22,13 +22,17 @@ ENV/
 # Test / coverage
 .pytest_cache/
 .coverage
+.coverage.*
+coverage.xml
 htmlcov/
 .tox/
 
-# Type checking
+# Lint / type checking
+.ruff_cache/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+.eslintcache
 
 # IDE
 .idea/
@@ -52,6 +56,9 @@ frontend/.next/
 frontend/out/
 frontend/node_modules/
 
+# TypeScript incremental build cache (was committed; untracked in task 0.7)
+*.tsbuildinfo
+
 # Backend build artifacts
 backend/__pycache__/
 backend/**/__pycache__/
@@ -65,6 +72,8 @@ pdfs/
 # Playwright test results
 test/test-results/
 test/playwright-report/
+tests/e2e/test-results/
+tests/e2e/playwright-report/
 .playwright-mcp/
 
 # Build artifacts
@@ -72,3 +81,17 @@ backend/static/
 
 # Windows
 Thumbs.db
+
+# Agent skills installed via `npx skills add` (machine-local, not vendored)
+.agents/
+skills-lock.json
+.claude/skills/
+
+# Personal resume data — contains real PII, must never be committed
+planning/master-resume.yaml
+*.personal.yaml
+
+# Agent scratch directory from the 2026-07 build. The markdown briefs and
+# reports are preserved under docs/archive/superpowers-sdd/; what remains here
+# is multi-megabyte raw review dumps that duplicate the git history.
+.superpowers/

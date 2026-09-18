@@ -1,15 +1,36 @@
-# docker-compose.test.yml
-version: "3.9"
+# docker-compose.test.yml — the hermetic e2e stack.
+#
+# This stack is deliberately isolated from the dev/production stack in
+# docker-compose.yml on every axis that could let a test run reach real data:
+#
+#   - Project name  `resumetailor-e2e`   (dev compose has none, so it uses the
+#                                         directory name `resume-tailoring-platform`)
+#   - Image tag     `resumetailor-e2e`   (dev builds `resumetailor`)
+#   - Host port     ${E2E_HOST_PORT:-18173}  (dev binds 8000)
+#   - Storage       tmpfs, discarded when the container stops
+#                                        (dev uses the persistent named volumes
+#                                         resumedb-data / resumepdf-data)
+#   - No env_file, so no real OPENAI_API_KEY can be loaded here.
+#
+# Run it with scripts/run_e2e.sh (or scripts/run_e2e.ps1), which tears the
+# stack down afterwards. See README "Tests".
+
+name: resumetailor-e2e
 
 services:
   app:
     build: .
-    image: resumetailor
+    image: resumetailor-e2e
+    # Published only so a developer can point a browser or a host-side
+    # `npx playwright test` at the test stack. Never 8000: that is the dev stack.
     ports:
-      - "8000:8000"
-    volumes:
-      - test-db:/app/db
-      - test-pdfs:/app/pdfs
+      - "${E2E_HOST_PORT:-18173}:8000"
+    # Ephemeral by design. tmpfs is wiped when the container stops, so no
+    # generated resume, PDF, or chat row survives into the next run and no
+    # spec can pass on residue.
+    tmpfs:
+      - /app/db
+      - /app/pdfs
     environment:
       - LLM_MOCK=true
       - OPENAI_API_KEY=mock-key-not-used
@@ -32,8 +53,6 @@ services:
     working_dir: /test
     command: npx playwright test
     environment:
+      # Container-network address of the test app. Port 8000 here is inside
+      # the compose network and is not the host's 8000.
       - BASE_URL=http://app:8000
-
-volumes:
-  test-db:
-  test-pdfs:

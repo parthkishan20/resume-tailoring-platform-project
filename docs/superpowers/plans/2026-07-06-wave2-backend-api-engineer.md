@@ -571,7 +571,7 @@ async def import_pdf(
     return row
 ```
 
-- [ ] **Step 4: Fix circular import** 
+- [ ] **Step 4: Fix circular import**
 
 `main.py` imports from routes; routes import `get_backend` from `main.py`. Break the cycle by moving `get_backend` to its own module:
 

@@ -4,7 +4,8 @@ set -euo pipefail
 
 CONTAINER_NAME="resumetailor"
 IMAGE_NAME="resumetailor"
-PORT=8000
+# Override to move the dev stack off 8000 (the e2e stack uses 18173 and never 8000).
+PORT="${PORT:-8000}"
 
 # Check for .env file
 if [ ! -f ".env" ]; then
@@ -28,7 +29,7 @@ fi
 echo "Starting ResumeTailor..."
 docker run -d \
   --name "${CONTAINER_NAME}" \
-  -p "${PORT}:${PORT}" \
+  -p "${PORT}:8000" \
   -v resumedb-data:/app/db \
   -v resumepdf-data:/app/pdfs \
   --env-file .env \

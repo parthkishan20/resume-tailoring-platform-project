@@ -5,10 +5,7 @@ from app.ports import LLMAuthError
 
 
 @pytest.mark.anyio
-async def test_list_resumes_empty(client, tmp_path, monkeypatch):
-    monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
-    from app.config import get_settings; get_settings.cache_clear()
-    from app.database import init_db; import asyncio; await asyncio.to_thread(init_db, str(tmp_path / "test.db"))
+async def test_list_resumes_empty(client):
     response = await client.get("/api/resumes")
     assert response.status_code == 200
     data = response.json()
@@ -17,15 +14,10 @@ async def test_list_resumes_empty(client, tmp_path, monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_generate_resume_sse_stream(client, sim, tmp_path, monkeypatch):
-    monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
-    monkeypatch.setenv("PDFS_DIR", str(tmp_path / "pdfs"))
-    from app.config import get_settings; get_settings.cache_clear()
-    from app.database import init_db, upsert_master_resume
+async def test_generate_resume_sse_stream(client, sim, db_path):
+    from app.database import upsert_master_resume
     import asyncio
-    db = str(tmp_path / "test.db")
-    await asyncio.to_thread(init_db, db)
-    await asyncio.to_thread(upsert_master_resume, db, MOCK_GENERATION_RESULT_YAML)
+    await asyncio.to_thread(upsert_master_resume, db_path, MOCK_GENERATION_RESULT_YAML)
 
     sim.sim_llm.set_complete_response(json.dumps({"yaml_content": MOCK_GENERATION_RESULT_YAML}))
     sim.sim_pdf_render.set_response(b"%PDF-1.4 test")
@@ -43,15 +35,10 @@ async def test_generate_resume_sse_stream(client, sim, tmp_path, monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_generate_resume_sse_error_llm_auth(client, sim, tmp_path, monkeypatch):
-    monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
-    monkeypatch.setenv("PDFS_DIR", str(tmp_path / "pdfs"))
-    from app.config import get_settings; get_settings.cache_clear()
-    from app.database import init_db, upsert_master_resume
+async def test_generate_resume_sse_error_llm_auth(client, sim, db_path):
+    from app.database import upsert_master_resume
     import asyncio
-    db = str(tmp_path / "test.db")
-    await asyncio.to_thread(init_db, db)
-    await asyncio.to_thread(upsert_master_resume, db, MOCK_GENERATION_RESULT_YAML)
+    await asyncio.to_thread(upsert_master_resume, db_path, MOCK_GENERATION_RESULT_YAML)
 
     sim.sim_llm.set_complete_error(LLMAuthError("Invalid API key"))
 
@@ -75,17 +62,12 @@ async def test_generate_resume_sse_error_llm_auth(client, sim, tmp_path, monkeyp
 
 
 @pytest.mark.anyio
-async def test_generate_injects_rules_into_prompts(client, sim, tmp_path, monkeypatch):
-    monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
-    monkeypatch.setenv("PDFS_DIR", str(tmp_path / "pdfs"))
-    from app.config import get_settings; get_settings.cache_clear()
-    from app.database import init_db, upsert_master_resume, upsert_rules
+async def test_generate_injects_rules_into_prompts(client, sim, db_path):
+    from app.database import upsert_master_resume, upsert_rules
     import asyncio
-    db = str(tmp_path / "test.db")
-    await asyncio.to_thread(init_db, db)
-    await asyncio.to_thread(upsert_master_resume, db, MOCK_GENERATION_RESULT_YAML)
+    await asyncio.to_thread(upsert_master_resume, db_path, MOCK_GENERATION_RESULT_YAML)
     await asyncio.to_thread(
-        upsert_rules, db,
+        upsert_rules, db_path,
         [{"section": "experience", "rule_key": "max_entries", "rule_value": "7"}],
     )
 
@@ -104,22 +86,15 @@ async def test_generate_injects_rules_into_prompts(client, sim, tmp_path, monkey
 
 
 @pytest.mark.anyio
-async def test_get_resume_404(client, tmp_path, monkeypatch):
-    monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
-    from app.config import get_settings; get_settings.cache_clear()
-    from app.database import init_db; import asyncio; await asyncio.to_thread(init_db, str(tmp_path / "test.db"))
+async def test_get_resume_404(client):
     response = await client.get("/api/resumes/9999")
     assert response.status_code == 404
 
 
 @pytest.mark.anyio
-async def test_delete_resume(client, sim, tmp_path, monkeypatch):
-    monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
-    from app.config import get_settings; get_settings.cache_clear()
-    from app.database import init_db, create_resume
+async def test_delete_resume(client, sim, db_path):
+    from app.database import create_resume
     import asyncio
-    db = str(tmp_path / "test.db")
-    await asyncio.to_thread(init_db, db)
-    r = await asyncio.to_thread(create_resume, db, "Test", "JD", "cv:\n  name: X")
+    r = await asyncio.to_thread(create_resume, db_path, "Test", "JD", "cv:\n  name: X")
     response = await client.delete(f"/api/resumes/{r['id']}")
     assert response.status_code == 204

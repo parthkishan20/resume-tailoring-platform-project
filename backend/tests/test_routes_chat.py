@@ -4,20 +4,14 @@ from app.ports import LLMUnavailableError
 
 
 @pytest.mark.anyio
-async def test_get_chat_history_empty(client, tmp_path, monkeypatch):
-    monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
-    from app.config import get_settings; get_settings.cache_clear()
-    from app.database import init_db; import asyncio; await asyncio.to_thread(init_db, str(tmp_path / "test.db"))
+async def test_get_chat_history_empty(client):
     response = await client.get("/api/chat")
     assert response.status_code == 200
     assert response.json() == []
 
 
 @pytest.mark.anyio
-async def test_chat_stream_returns_token_events(client, sim, tmp_path, monkeypatch):
-    monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
-    from app.config import get_settings; get_settings.cache_clear()
-    from app.database import init_db; import asyncio; await asyncio.to_thread(init_db, str(tmp_path / "test.db"))
+async def test_chat_stream_returns_token_events(client, sim):
     sim.sim_llm.set_stream_chunks(["Hello ", "world!"])
 
     response = await client.post("/api/chat/stream", json={"message": "Hi"})
@@ -29,10 +23,7 @@ async def test_chat_stream_returns_token_events(client, sim, tmp_path, monkeypat
 
 
 @pytest.mark.anyio
-async def test_chat_stream_error_llm_unavailable(client, sim, tmp_path, monkeypatch):
-    monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
-    from app.config import get_settings; get_settings.cache_clear()
-    from app.database import init_db; import asyncio; await asyncio.to_thread(init_db, str(tmp_path / "test.db"))
+async def test_chat_stream_error_llm_unavailable(client, sim):
     sim.sim_llm.set_stream_error(LLMUnavailableError("Service unavailable"))
 
     response = await client.post("/api/chat/stream", json={"message": "Hi"})
@@ -52,9 +43,6 @@ async def test_chat_stream_error_llm_unavailable(client, sim, tmp_path, monkeypa
 
 
 @pytest.mark.anyio
-async def test_clear_chat(client, tmp_path, monkeypatch):
-    monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
-    from app.config import get_settings; get_settings.cache_clear()
-    from app.database import init_db; import asyncio; await asyncio.to_thread(init_db, str(tmp_path / "test.db"))
+async def test_clear_chat(client):
     response = await client.delete("/api/chat")
     assert response.status_code == 204

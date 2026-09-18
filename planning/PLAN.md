@@ -472,4 +472,3 @@ Done event `result`:
 ### PDF Import (`POST /api/master-resume/import`)
 
 Returns the same minimal valid render-cv YAML as the resume generation mock.
-

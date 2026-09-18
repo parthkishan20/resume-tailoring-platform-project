@@ -1,0 +1,144 @@
+# .dockerignore
+#
+# The build context is tarred and streamed to the Docker daemon before the
+# first instruction runs, so everything excluded here costs nothing on every
+# build. Two goals:
+#
+#   1. Keep host build artifacts out of the context entirely. Without this
+#      file the context is ~850 MB, and the darwin `frontend/node_modules`
+#      and the conda/darwin Python 3.13 `backend/.venv` end up inside a linux
+#      image (PLAN.md D-34, D-35, D-36).
+#   2. Keep secrets out of the context, so that no present or future `COPY`
+#      can bake `.env` into a layer.
+#
+# The Dockerfile copies only named paths (see its COPY lines); this file is
+# the second line of defence, not the only one.
+
+# ── Secrets and credentials ─────────────────────────────────────────────────
+.env
+.env.*
+*.env
+**/.env
+**/.env.*
+secrets/
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/*.crt
+**/id_rsa*
+**/id_ed25519*
+.netrc
+.npmrc
+.pypirc
+.aws/
+.ssh/
+
+# ── Version control ─────────────────────────────────────────────────────────
+.git
+.gitignore
+.gitattributes
+.github
+.hg
+.svn
+
+# ── Node / frontend artifacts ───────────────────────────────────────────────
+node_modules
+**/node_modules
+.npm
+**/.npm
+frontend/.next
+**/.next
+frontend/out
+**/tsconfig.tsbuildinfo
+**/npm-debug.log*
+**/yarn-error.log*
+**/pnpm-debug.log*
+.eslintcache
+
+# ── Python artifacts ────────────────────────────────────────────────────────
+.venv
+**/.venv
+venv
+**/venv
+env/
+ENV/
+**/__pycache__
+**/*.py[cod]
+**/*.egg-info
+**/*.egg
+.eggs
+build/
+dist/
+.Python
+
+# ── Test, lint and type-check caches and output ─────────────────────────────
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.dmypy.json
+**/.tox
+**/.coverage
+**/.coverage.*
+**/htmlcov
+**/coverage
+test/
+backend/tests/
+frontend/src/__tests__/
+**/test-results
+**/playwright-report
+**/.playwright
+.playwright-mcp
+
+# ── Build output the image regenerates itself ───────────────────────────────
+# Stage 1 produces frontend/out and stage 2 copies it to backend/static.
+backend/static
+
+# ── Runtime data (bind/volume mounted at run time, never baked in) ──────────
+db/
+pdfs/
+**/pdfs
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+**/*.db-journal
+**/*.db-wal
+**/*.db-shm
+
+# ── Agent and editor tooling ────────────────────────────────────────────────
+.agents
+.claude
+**/.claude
+.superpowers
+skills-lock.json
+.cursor
+.aider*
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# ── OS cruft ────────────────────────────────────────────────────────────────
+**/.DS_Store
+**/._*
+**/Thumbs.db
+**/desktop.ini
+
+# ── Docs, planning and repo meta (not needed at runtime) ────────────────────
+# planning/ in particular holds master-resume.yaml, which is real PII.
+docs/
+planning/
+scripts/
+README.md
+AGENTS.md
+PLAN.md
+CONTRIBUTING.md
+LICENSE
+**/*.log
+
+# ── Docker's own files ──────────────────────────────────────────────────────
+Dockerfile
+Dockerfile.*
+.dockerignore
+docker-compose*.yml

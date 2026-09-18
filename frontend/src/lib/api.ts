@@ -3,19 +3,48 @@ import type {
   ChatMessage, Rule, SystemPrompt, SortField, SortOrder,
 } from "./types";
 
+/** Error carrying the HTTP status and the backend's machine-readable `code`, when it sent one. */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
+// FastAPI's HTTPException emits {detail}; the custom handlers in main.py emit {error, code}.
+interface ErrorBody { detail?: unknown; error?: unknown; code?: unknown }
+
+function asString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(body.error ?? res.statusText);
+    const body: ErrorBody | null = await res.json().catch(() => null);
+    const message =
+      asString(body?.detail) ?? asString(body?.error) ??
+      (res.statusText || `Request failed (${res.status})`);
+    throw new ApiError(message, res.status, asString(body?.code) ?? undefined);
   }
-  return res.json() as Promise<T>;
+  // 204 and any other empty body: nothing to parse, and res.json() would reject.
+  if (res.status === 204) return undefined as T;
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 export const api = {
   // Master Resume
-  getMasterResume: () =>
-    request<MasterResume | null>("/api/master-resume").catch(() => null),
+  // Only a genuine 404 means "no resume yet"; every other failure must reach the caller.
+  getMasterResume: (): Promise<MasterResume | null> =>
+    request<MasterResume>("/api/master-resume").catch((e: unknown) => {
+      if (e instanceof ApiError && e.status === 404) return null;
+      throw e;
+    }),
   saveMasterResume: (yaml_content: string) =>
     request<MasterResume>("/api/master-resume", {
       method: "PUT",

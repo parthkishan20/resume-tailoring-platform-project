@@ -3,7 +3,9 @@ $ErrorActionPreference = "Stop"
 
 $ContainerName = "resumetailor"
 $ImageName = "resumetailor"
-$Port = 8000
+# Override with $env:PORT to move the dev stack off 8000
+# (the e2e stack uses 18173 and never 8000).
+$Port = if ($env:PORT) { $env:PORT } else { 8000 }
 
 if (-not (Test-Path ".env")) {
     Write-Error "Error: .env file not found. Copy .env.example to .env and set OPENAI_API_KEY."
@@ -27,7 +29,7 @@ if ($args -contains "--build" -or -not (docker image inspect $ImageName 2>$null)
 Write-Host "Starting ResumeTailor..."
 docker run -d `
     --name $ContainerName `
-    -p "${Port}:${Port}" `
+    -p "${Port}:8000" `
     -v resumedb-data:/app/db `
     -v resumepdf-data:/app/pdfs `
     --env-file .env `

@@ -8,19 +8,30 @@ import ResumeListPanel from "./ResumeListPanel";
 import EvaluationPanel from "./EvaluationPanel";
 import ChatDrawer from "./ChatDrawer";
 import Spinner from "./ui/Spinner";
+import Button from "./ui/Button";
 import type { MasterResume, GeneratedResume, View } from "@/lib/types";
 import { api } from "@/lib/api";
 
 export default function WorkstationShell() {
   const [masterResume, setMasterResume] = useState<MasterResume | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [view, setView] = useState<View>("editor");
   const [selectedResume, setSelectedResume] = useState<GeneratedResume | null>(null);
   const [chatOpen, setChatOpen] = useState(true);
 
-  useEffect(() => {
-    api.getMasterResume().then((r) => { setMasterResume(r); setLoading(false); });
+  const load = useCallback(() => {
+    setLoading(true);
+    setLoadError(null);
+    api.getMasterResume()
+      .then((r) => setMasterResume(r))
+      .catch((e: unknown) =>
+        setLoadError(e instanceof Error ? e.message : "Could not reach the server")
+      )
+      .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { load(); }, [load]);
 
   const handleImport = useCallback((r: MasterResume) => setMasterResume(r), []);
   const handleLoadSample = useCallback(async (yaml: string) => {
@@ -44,6 +55,27 @@ export default function WorkstationShell() {
           Resume<span className="text-accent">Tailor</span>
         </span>
         <Spinner className="text-accent" />
+      </div>
+    );
+  }
+
+  // A backend failure must never fall through to onboarding: its sample button overwrites data.
+  if (loadError) {
+    return (
+      <div
+        className="flex h-screen flex-col items-center justify-center gap-4 px-6 text-center"
+        data-testid="load-error"
+      >
+        <span className="font-display text-3xl italic text-foreground">
+          Resume<span className="text-accent">Tailor</span>
+        </span>
+        <div role="alert" className="max-w-md">
+          <p className="text-sm text-foreground">We could not load your master resume.</p>
+          <p className="mt-1 text-xs text-error">{loadError}</p>
+        </div>
+        <Button variant="primary" onClick={load} data-testid="load-error-retry">
+          Try again
+        </Button>
       </div>
     );
   }

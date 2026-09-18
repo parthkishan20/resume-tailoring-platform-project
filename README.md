@@ -106,9 +106,45 @@ cp -r out ../backend/static
 # Backend unit tests
 cd backend && uv run pytest
 
-# End-to-end tests (requires running app)
-cd test && npx playwright test
+# End-to-end tests — builds and runs an isolated stack, then tears it down
+./scripts/run_e2e.sh          # Windows: .\scripts\run_e2e.ps1
 ```
+
+The e2e suite is destructive: every spec deletes and overwrites the master resume,
+the chat history, and the generation rules on whatever it is pointed at. It must
+never be pointed at your own app.
+
+`scripts/run_e2e.sh` is the only supported entry point. It brings up
+`docker-compose.test.yml`, which is isolated from the dev stack on every axis:
+
+| | Dev stack (`docker-compose.yml`) | Test stack (`docker-compose.test.yml`) |
+|---|---|---|
+| Compose project | `resume-tailoring-platform` | `resumetailor-e2e` |
+| Image tag | `resumetailor` | `resumetailor-e2e` |
+| Host port | 8000 | 18173 (`E2E_HOST_PORT` to change; 8000 is rejected) |
+| Storage | persistent volumes `resumedb-data`, `resumepdf-data` | tmpfs, discarded with the container |
+| LLM | your real `OPENAI_API_KEY` from `.env` | `LLM_MOCK=true`, no `.env` |
+
+Both stacks can run at the same time; they do not collide.
+
+If you ran the e2e suite before this change, two stale named volumes may still
+be on disk. Nothing references them any more; remove them with
+`docker volume rm resume-tailoring-platform_test-db resume-tailoring-platform_test-pdfs`.
+
+To run the specs from your host against an already-running test stack, set
+`BASE_URL` yourself:
+
+```bash
+E2E_HOST_PORT=18173 docker compose -f docker-compose.test.yml up -d --build
+cd test && BASE_URL=http://localhost:18173 npx playwright test
+docker compose -f docker-compose.test.yml down -v
+```
+
+`BASE_URL` has no default. `test/playwright.config.ts` fails immediately if it is
+unset, and refuses a loopback address on port 8000 — that is the dev stack.
+
+If you need the dev app on a different port, `PORT=9000 ./scripts/start_mac.sh`
+(or `$env:PORT = "9000"` on Windows).
 
 ---
 
