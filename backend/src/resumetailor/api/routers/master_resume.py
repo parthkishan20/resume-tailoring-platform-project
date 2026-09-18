@@ -63,9 +63,7 @@ async def preview_master_resume(
         raise HTTPException(status_code=404, detail="No master resume found")
 
     try:
-        pdf_bytes = await backend.render(
-            normalize_to_rendercv(row.yaml_content).yaml
-        )
+        pdf_bytes = await backend.render(normalize_to_rendercv(row.yaml_content).yaml)
     except RenderError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 

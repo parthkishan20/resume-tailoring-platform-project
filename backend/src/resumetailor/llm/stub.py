@@ -81,6 +81,18 @@ MOCK_GENERATION_PROGRESS: list[str] = [
     "Rendering PDF...",
 ]
 
+# The en-dashes below are not a style choice: `backend/tests/helpers/llm_stub.py`
+# imports this constant rather than keeping its own copy, so a change here is a
+# change for both the pytest suite and the LLM_MOCK=true e2e stack.
+MOCK_EXTRACTED_TEXT: str = (
+    "John Mock\nmock@example.com\n+10000000000\nMock City, MC\n\n"
+    "EDUCATION\nMock University — B.S. Computer Science, 2018–2022\n\n"  # noqa: RUF001
+    "EXPERIENCE\nMock Corp — Software Engineer, 2022–present\n"  # noqa: RUF001
+    "  • Built mock features using Python and React\n"
+    "  • Deployed mock services with Docker\n\n"
+    "SKILLS\nPython, TypeScript, React, Docker, Git, FastAPI, SQL"
+)
+
 
 # ── Tier 1: SimulatedBackendAPI ─────────────────────────────────────────────
 
@@ -128,11 +140,4 @@ class SimulatedBackendAPI:
         return _FIXTURE_PDF.read_bytes()
 
     async def extract(self, pdf_bytes: bytes) -> str:  # noqa: ARG002
-        return (
-            "John Mock\nmock@example.com\n+10000000000\nMock City, MC\n\n"
-            "EDUCATION\nMock University — B.S. Computer Science, 2018–2022\n\n"  # noqa: RUF001
-            "EXPERIENCE\nMock Corp — Software Engineer, 2022–present\n"  # noqa: RUF001
-            "  • Built mock features using Python and React\n"
-            "  • Deployed mock services with Docker\n\n"
-            "SKILLS\nPython, TypeScript, React, Docker, Git, FastAPI, SQL"
-        )
+        return MOCK_EXTRACTED_TEXT
