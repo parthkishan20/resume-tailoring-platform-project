@@ -8,8 +8,10 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
+from resumetailor.api.schemas.errors import error_responses, pdf_response
 from resumetailor.backend_api import BackendAPI
 from resumetailor.core.config import get_settings
+from resumetailor.db.models import MasterResume
 from resumetailor.db.repositories import (
     get_master_resume,
     upsert_master_resume,
@@ -32,7 +34,11 @@ class MasterResumeBody(BaseModel):
     yaml_content: str = Field(max_length=MAX_RESUME_YAML_CHARS)
 
 
-@router.get("/api/master-resume")
+@router.get(
+    "/api/master-resume",
+    response_model=MasterResume,
+    responses=error_responses(404),
+)
 async def get_resume():
     row = await asyncio.to_thread(get_master_resume, _db_path())
     if row is None:
@@ -40,20 +46,31 @@ async def get_resume():
     return row
 
 
-@router.put("/api/master-resume")
+@router.put(
+    "/api/master-resume",
+    response_model=MasterResume,
+    responses=error_responses(413, 422),
+)
 async def save_resume(body: MasterResumeBody):
     row = await asyncio.to_thread(upsert_master_resume, _db_path(), body.yaml_content)
     return row
 
 
-@router.delete("/api/master-resume", status_code=204)
+@router.delete("/api/master-resume", status_code=204, responses=error_responses(404))
 async def remove_resume():
     deleted = await asyncio.to_thread(delete_master_resume, _db_path())
     if not deleted:
         raise HTTPException(status_code=404, detail="No master resume to delete")
 
 
-@router.get("/api/master-resume/preview")
+@router.get(
+    "/api/master-resume/preview",
+    response_class=Response,
+    responses={
+        **pdf_response("The master resume, rendered."),
+        **error_responses(404, 422),
+    },
+)
 async def preview_master_resume(
     backend: BackendAPI = Depends(get_backend),
 ):
@@ -71,7 +88,11 @@ async def preview_master_resume(
     return Response(content=pdf_bytes, media_type="application/pdf")
 
 
-@router.post("/api/master-resume/import")
+@router.post(
+    "/api/master-resume/import",
+    response_model=MasterResume,
+    responses=error_responses(400, 413, 422, 429, 500, 503),
+)
 async def import_pdf(
     file: UploadFile = File(...),
     api: BackendAPI = Depends(get_backend),

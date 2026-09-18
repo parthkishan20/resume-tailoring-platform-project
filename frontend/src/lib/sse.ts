@@ -1,49 +1,12 @@
-// SSE stream reader for POST endpoints (generate, chat, evaluate)
-// Returns an async generator of parsed SSE events.
+/**
+ * Where `readSseStream` used to live.
+ *
+ * The reader itself is now `lib/api/sse.ts`, alongside the typed per-route
+ * readers that validate each frame. This module stays because five panels
+ * under `src/components/**` and `src/features/**` import `@/lib/sse`, and none
+ * of those files belongs to task 2.2. New code uses `streamTailor`,
+ * `streamChat` or `streamEvaluate` from `@/lib/api`, which give a validated,
+ * discriminated frame instead of `data: unknown` and a cast.
+ */
 
-export interface SseEvent {
-  event: string;
-  data: unknown;
-}
-
-export async function* readSseStream(
-  path: string,
-  body: unknown,
-  signal?: AbortSignal
-): AsyncGenerator<SseEvent> {
-  const res = await fetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal,
-  });
-  if (!res.ok || !res.body) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error ?? res.statusText);
-  }
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let currentEvent = "message";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-    for (const line of lines) {
-      if (line.startsWith("event:")) {
-        currentEvent = line.slice(6).trim();
-      } else if (line.startsWith("data:")) {
-        const raw = line.slice(5).trim();
-        try {
-          yield { event: currentEvent, data: JSON.parse(raw) };
-        } catch {
-          yield { event: currentEvent, data: raw };
-        }
-        currentEvent = "message";
-      }
-    }
-  }
-}
+export { readSseStream, type SseEvent } from "@/lib/api";

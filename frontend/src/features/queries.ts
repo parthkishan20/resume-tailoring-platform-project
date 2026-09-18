@@ -43,6 +43,14 @@ import type {
  * inline key. Invalidate the widest prefix that is still correct:
  * `queryKeys.resumes.all` after a generate or a delete, the exact list key
  * only when the page is known not to have moved.
+ *
+ * CANCELLATION. Every `queryFn` below takes the `signal` TanStack Query hands
+ * it and passes it to the client, which is the half of D-40 that belongs to
+ * the query layer: a query that is still in flight when its component
+ * unmounts, or when a refetch supersedes it, is aborted instead of running to
+ * completion and resolving into a cache nobody is reading. Mutations do not
+ * get one, because TanStack does not supply one: a mutation the user has
+ * already committed to should finish.
  */
 export const queryKeys = {
   masterResume: ["master-resume"] as const,
@@ -77,7 +85,7 @@ export const DEFAULT_RESUME_LIST_PARAMS: ResumeListParams = {
 export function useMasterResume(): UseQueryResult<MasterResume | null> {
   return useQuery({
     queryKey: queryKeys.masterResume,
-    queryFn: () => api.getMasterResume(),
+    queryFn: ({ signal }) => api.getMasterResume({ signal }),
   });
 }
 
@@ -112,12 +120,15 @@ export function useResumeList(
 ): UseQueryResult<ResumeListResponse> {
   return useQuery({
     queryKey: queryKeys.resumes.list(params),
-    queryFn: () => api.listResumes(params.sort, params.order, params.page),
+    queryFn: ({ signal }) => api.listResumes(params.sort, params.order, params.page, { signal }),
   });
 }
 
 export function useRules(): UseQueryResult<Rule[]> {
-  return useQuery({ queryKey: queryKeys.rules, queryFn: () => api.getRules() });
+  return useQuery({
+    queryKey: queryKeys.rules,
+    queryFn: ({ signal }) => api.getRules({ signal }),
+  });
 }
 
 export function useUpdateRules(): UseMutationResult<Rule[], Error, Rule[]> {
@@ -148,7 +159,7 @@ export function useResetRules(): UseMutationResult<Rule[], Error, void> {
 export function useSystemPrompt(enabled = true): UseQueryResult<SystemPrompt> {
   return useQuery({
     queryKey: queryKeys.systemPrompt,
-    queryFn: () => api.getSystemPrompt(),
+    queryFn: ({ signal }) => api.getSystemPrompt({ signal }),
     enabled,
   });
 }

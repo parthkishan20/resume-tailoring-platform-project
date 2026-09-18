@@ -1,0 +1,2088 @@
+{
+  "components": {
+    "schemas": {
+      "Body_import_pdf_api_master_resume_import_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": ["file"],
+        "title": "Body_import_pdf_api_master_resume_import_post",
+        "type": "object"
+      },
+      "ChatAction": {
+        "description": "A follow-up the assistant asks the UI to perform.\n\nDeclared because the field exists on the wire and the frontend's type\nvocabulary already names it. Nothing emits a non-null ``action`` today;\nthe assistant tab that will is task 3.2's.",
+        "properties": {
+          "resume_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Resume Id"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": ["type"],
+        "title": "ChatAction",
+        "type": "object"
+      },
+      "ChatDoneFrame": {
+        "description": "``event: done`` on ``POST /api/chat/stream``.",
+        "properties": {
+          "result": {
+            "$ref": "#/components/schemas/ChatResult"
+          }
+        },
+        "required": ["result"],
+        "title": "ChatDoneFrame",
+        "type": "object"
+      },
+      "ChatMessage": {
+        "description": "One turn of the assistant transcript.",
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": ["id", "user_id", "role", "content", "created_at"],
+        "title": "ChatMessage",
+        "type": "object"
+      },
+      "ChatRequest": {
+        "properties": {
+          "message": {
+            "maxLength": 10000,
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": ["message"],
+        "title": "ChatRequest",
+        "type": "object"
+      },
+      "ChatResult": {
+        "description": "The assembled assistant turn, sent once the stream is complete.\n\n``text`` is every ``delta`` concatenated, so a client that accumulated the\ntokens itself can ignore it and one that did not does not have to.",
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatAction"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": ["text"],
+        "title": "ChatResult",
+        "type": "object"
+      },
+      "ErrorCode": {
+        "description": "Every `code` this API can send, on an HTTP error body or in an SSE `event: error` frame. Compare against it; do not assume it is exhaustive at runtime, since a server newer than the client can send one that is not listed here.",
+        "enum": [
+          "CHAT_FAILED",
+          "EVALUATION_FAILED",
+          "GENERATION_FAILED",
+          "INTERNAL_ERROR",
+          "LLM_AUTH_ERROR",
+          "LLM_EMPTY_RESPONSE",
+          "LLM_UNAVAILABLE",
+          "NO_MASTER_RESUME",
+          "PDF_EXTRACT_FAILED",
+          "RATE_LIMITED",
+          "RENDER_FAILED",
+          "REQUEST_TOO_LARGE"
+        ],
+        "type": "string"
+      },
+      "ErrorDetail": {
+        "description": "``{\"detail\": \"<sentence>\"}``: an ``HTTPException`` raised in a router.\n\nNo ``code``. A client that needs to branch on one of these has only the\nstatus and the path, which is the gap the recommendation in this module's\ndocstring closes.",
+        "examples": [
+          {
+            "detail": "Resume not found"
+          }
+        ],
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": ["detail"],
+        "title": "ErrorDetail",
+        "type": "object"
+      },
+      "ErrorEnvelope": {
+        "description": "``{\"error\", \"code\"}``: the application's own error body.\n\n``error`` is the raising class's fixed ``client_message`` and is safe to\nshow a user; it is never ``str(exc)`` (D-53). ``code`` is what to branch\non, and its vocabulary is :data:`ERROR_CODES`.",
+        "examples": [
+          {
+            "code": "LLM_UNAVAILABLE",
+            "error": "The language model provider is unavailable. Try again in a moment."
+          }
+        ],
+        "properties": {
+          "code": {
+            "description": "Machine-readable. One of ERROR_CODES.",
+            "title": "Code",
+            "type": "string"
+          },
+          "error": {
+            "description": "One sentence, safe to show a user.",
+            "title": "Error",
+            "type": "string"
+          }
+        },
+        "required": ["error", "code"],
+        "title": "ErrorEnvelope",
+        "type": "object"
+      },
+      "EvaluateDoneFrame": {
+        "description": "``event: done`` on ``POST /api/evaluate/stream``: the score.",
+        "properties": {
+          "result": {
+            "$ref": "#/components/schemas/EvaluationResult"
+          }
+        },
+        "required": ["result"],
+        "title": "EvaluateDoneFrame",
+        "type": "object"
+      },
+      "EvaluateRequest": {
+        "description": "Any resume document, scored against any job description.\n\n`yaml_content` is deliberately not \"the master resume\": D-45 wants a\ngenerated resume, or the editor's unsaved buffer, evaluated too, and the\nservice behind this route takes whatever it is given.",
+        "properties": {
+          "job_description": {
+            "maxLength": 20000,
+            "title": "Job Description",
+            "type": "string"
+          },
+          "yaml_content": {
+            "maxLength": 100000,
+            "title": "Yaml Content",
+            "type": "string"
+          }
+        },
+        "required": ["yaml_content", "job_description"],
+        "title": "EvaluateRequest",
+        "type": "object"
+      },
+      "EvaluationResult": {
+        "description": "How well one resume answers one job description.\n\nThe field names and types are the ``event: done`` payload the frontend\nreads, unchanged from when this was ``json.loads`` in the route. Parsing\ninto a model rather than a bare ``dict`` is what makes a provider that\nignores the response schema a caught error instead of a half-populated\npanel.",
+        "properties": {
+          "critique": {
+            "title": "Critique",
+            "type": "string"
+          },
+          "match_score": {
+            "title": "Match Score",
+            "type": "integer"
+          },
+          "matched_keywords": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Matched Keywords",
+            "type": "array"
+          },
+          "missing_keywords": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Keywords",
+            "type": "array"
+          }
+        },
+        "required": ["match_score", "critique", "matched_keywords", "missing_keywords"],
+        "title": "EvaluationResult",
+        "type": "object"
+      },
+      "GenerateDoneFrame": {
+        "description": "``event: done`` on ``POST /api/resumes/stream``: the stored row.\n\nThe full :class:`~resumetailor.db.models.GeneratedResume`, ``yaml_content``\nincluded, because the row has just been written and the client would\notherwise fetch it back immediately.",
+        "properties": {
+          "result": {
+            "$ref": "#/components/schemas/GeneratedResume"
+          }
+        },
+        "required": ["result"],
+        "title": "GenerateDoneFrame",
+        "type": "object"
+      },
+      "GenerateRequest": {
+        "properties": {
+          "job_description": {
+            "maxLength": 20000,
+            "title": "Job Description",
+            "type": "string"
+          }
+        },
+        "required": ["job_description"],
+        "title": "GenerateRequest",
+        "type": "object"
+      },
+      "GeneratedResume": {
+        "description": "One tailored resume, with the YAML it was rendered from.",
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "job_description": {
+            "title": "Job Description",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "pdf_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pdf Path"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          },
+          "yaml_content": {
+            "title": "Yaml Content",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "name",
+          "job_description",
+          "yaml_content",
+          "pdf_path",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "GeneratedResume",
+        "type": "object"
+      },
+      "GenerationRule": {
+        "description": "One ``section.rule_key = rule_value`` limit applied during generation.\n\nNo ``id`` or ``user_id``: the rules query has always projected just these\nthree columns, and the rules are addressed by ``(section, rule_key)``.",
+        "properties": {
+          "rule_key": {
+            "title": "Rule Key",
+            "type": "string"
+          },
+          "rule_value": {
+            "title": "Rule Value",
+            "type": "string"
+          },
+          "section": {
+            "title": "Section",
+            "type": "string"
+          }
+        },
+        "required": ["section", "rule_key", "rule_value"],
+        "title": "GenerationRule",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "description": "The process is up and serving. Says nothing about its dependencies.",
+        "properties": {
+          "status": {
+            "const": "ok",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": ["status"],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "MasterResume": {
+        "description": "The one canonical resume document, per user.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          },
+          "yaml_content": {
+            "title": "Yaml Content",
+            "type": "string"
+          }
+        },
+        "required": ["id", "user_id", "yaml_content", "updated_at"],
+        "title": "MasterResume",
+        "type": "object"
+      },
+      "MasterResumeBody": {
+        "properties": {
+          "yaml_content": {
+            "maxLength": 100000,
+            "title": "Yaml Content",
+            "type": "string"
+          }
+        },
+        "required": ["yaml_content"],
+        "title": "MasterResumeBody",
+        "type": "object"
+      },
+      "RequestValidationDetail": {
+        "description": "FastAPI's own 422: the request never reached a handler.",
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationIssue"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "required": ["detail"],
+        "title": "RequestValidationDetail",
+        "type": "object"
+      },
+      "ResumePage": {
+        "description": "One page of the resume library, plus what it took to ask for it.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ResumeSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": ["items", "total", "page", "limit"],
+        "title": "ResumePage",
+        "type": "object"
+      },
+      "ResumeSummary": {
+        "description": "A list row. Deliberately without ``yaml_content``: a library listing does\nnot need every document's full source, and the list query never selected it.",
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "job_description": {
+            "title": "Job Description",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "pdf_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pdf Path"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "name",
+          "job_description",
+          "pdf_path",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ResumeSummary",
+        "type": "object"
+      },
+      "ResumeUpdate": {
+        "description": "Either field, or both. D-69: both are bounded now.\n\nThese were the two bare `str` fields task 2.4 missed when it capped the\nother five for D-47, so until now only the 1 MiB JSON body cap stood\nbetween a caller and a 900 KB resume name. `name` is bounded well below\nthe YAML cap because it is a label in a list, not a document.",
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "yaml_content": {
+            "anyOf": [
+              {
+                "maxLength": 100000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Yaml Content"
+          }
+        },
+        "title": "ResumeUpdate",
+        "type": "object"
+      },
+      "RuleItem": {
+        "properties": {
+          "rule_key": {
+            "title": "Rule Key",
+            "type": "string"
+          },
+          "rule_value": {
+            "title": "Rule Value",
+            "type": "string"
+          },
+          "section": {
+            "title": "Section",
+            "type": "string"
+          }
+        },
+        "required": ["section", "rule_key", "rule_value"],
+        "title": "RuleItem",
+        "type": "object"
+      },
+      "RulesBody": {
+        "properties": {
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/RuleItem"
+            },
+            "title": "Rules",
+            "type": "array"
+          }
+        },
+        "required": ["rules"],
+        "title": "RulesBody",
+        "type": "object"
+      },
+      "SseErrorFrame": {
+        "description": "``event: error`` -- the same body an HTTP error would have carried.\n\nIdentical in shape to\n:class:`~resumetailor.api.schemas.errors.ErrorEnvelope`, and deliberately\nso: a streaming failure and a non-streaming one should be one thing for\nthe client to handle. ``error`` is the raising class's ``client_message``\nand ``code`` is ``exc.code`` -- as of task 2.2 on all three routes, where\ntwo of them previously emitted a literal that could disagree with the\nexception actually raised.\n\nThis is the frame D-55 is about: it arrives inside a 200 response,\nbecause the status line was sent before the generator produced anything.",
+        "properties": {
+          "code": {
+            "description": "Machine-readable. One of ERROR_CODES.",
+            "title": "Code",
+            "type": "string"
+          },
+          "error": {
+            "description": "One sentence, safe to show a user.",
+            "title": "Error",
+            "type": "string"
+          }
+        },
+        "required": ["error", "code"],
+        "title": "SseErrorFrame",
+        "type": "object"
+      },
+      "SseProgressFrame": {
+        "description": "``event: progress`` -- the step the server is about to take.\n\nThe message strings are the wire contract and live in the routes (see\n``_PROGRESS_MESSAGES`` in ``api/routers/resumes.py``), not here.",
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": ["message"],
+        "title": "SseProgressFrame",
+        "type": "object"
+      },
+      "SseTokenFrame": {
+        "description": "``event: token`` -- one chunk of assistant text, to append verbatim.",
+        "properties": {
+          "delta": {
+            "title": "Delta",
+            "type": "string"
+          }
+        },
+        "required": ["delta"],
+        "title": "SseTokenFrame",
+        "type": "object"
+      },
+      "SystemPrompt": {
+        "description": "The system prompt in front of every assistant turn.",
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": ["id", "user_id", "content", "updated_at"],
+        "title": "SystemPrompt",
+        "type": "object"
+      },
+      "SystemPromptBody": {
+        "properties": {
+          "content": {
+            "maxLength": 20000,
+            "title": "Content",
+            "type": "string"
+          }
+        },
+        "required": ["content"],
+        "title": "SystemPromptBody",
+        "type": "object"
+      },
+      "ValidationIssue": {
+        "additionalProperties": true,
+        "description": "One entry of FastAPI's 422 body.\n\n``extra=\"allow\"``: pydantic v2 also emits ``input`` and sometimes ``ctx``\nand ``url``, and this model documents the three fields a client can rely\non without claiming the others are absent.",
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Loc",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Msg",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": ["loc", "msg", "type"],
+        "title": "ValidationIssue",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "The ResumeTailor HTTP API.\n\n**Errors come in three shapes.** A domain error answers `{\"error\", \"code\"}`;\nan `HTTPException` raised inside a route answers `{\"detail\": \"<sentence>\"}`;\na request that fails validation before reaching a handler answers\n`{\"detail\": [...]}`. Every documented error status lists all three, because\n422 in particular can arrive as any of them. Branch on `code` where there is\none, and never on the human-readable text, which is fixed per error class and\ndeliberately says nothing about the inside of the server.\n\n**The three streaming routes always answer 200.** `POST /api/resumes/stream`,\n`POST /api/chat/stream` and `POST /api/evaluate/stream` send their status line\nbefore the work starts, so a failure arrives as an `event: error` frame inside\na successful response rather than as an HTTP error status. A load balancer, an\nuptime check, or any client that reads only the status line will see a\ncomplete provider outage as 100% success. Read the frames. A client is done\nwith one of these responses when it has seen an `event: done` or an\n`event: error` frame, not when the body ends.",
+    "title": "ResumeTailor API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/chat": {
+      "delete": {
+        "operationId": "clear_history_api_chat_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Clear History"
+      },
+      "get": {
+        "operationId": "get_history_api_chat_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ChatMessage"
+                  },
+                  "title": "Response Get History Api Chat Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get History"
+      }
+    },
+    "/api/chat/stream": {
+      "post": {
+        "operationId": "chat_stream_api_chat_stream_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "description": "The JSON after `data:` on one frame. Which schema applies is decided by the preceding `event:` line, which is not part of the payload: `token` is `SseTokenFrame`; `done` is `ChatDoneFrame`; `error` is `SseErrorFrame`.",
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/SseTokenFrame"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ChatDoneFrame"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SseErrorFrame"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Server-sent events. Always 200, including on failure: the status line is sent before the work starts, so an error arrives as an `event: error` frame in this body. Read the frames, not the status.\n\nFrames, in order: `event: token`, `event: done`, `event: error`."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 413 Chat Stream Api Chat Stream Post"
+                }
+              }
+            },
+            "description": "The body, or an upload inside it, is over the cap. `REQUEST_TOO_LARGE`."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 422 Chat Stream Api Chat Stream Post"
+                }
+              }
+            },
+            "description": "The request was understood and refused. Any of the three shapes: FastAPI's array of issues for a malformed body, a located-issues sentence for a document RenderCV rejects, or a `PDF_EXTRACT_FAILED` envelope for an unreadable upload."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 429 Chat Stream Api Chat Stream Post"
+                }
+              }
+            },
+            "description": "The caller has spent its request budget. `RATE_LIMITED`, with `Retry-After`."
+          }
+        },
+        "summary": "Chat Stream"
+      }
+    },
+    "/api/evaluate/stream": {
+      "post": {
+        "description": "Score a resume against a job description, as server-sent events.\n\nThe call and the parse are `domain.evaluation.evaluate`; this handler only\nframes them.",
+        "operationId": "evaluate_stream_api_evaluate_stream_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "description": "The JSON after `data:` on one frame. Which schema applies is decided by the preceding `event:` line, which is not part of the payload: `progress` is `SseProgressFrame`; `done` is `EvaluateDoneFrame`; `error` is `SseErrorFrame`.",
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/SseProgressFrame"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EvaluateDoneFrame"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SseErrorFrame"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Server-sent events. Always 200, including on failure: the status line is sent before the work starts, so an error arrives as an `event: error` frame in this body. Read the frames, not the status.\n\nFrames, in order: `event: progress`, `event: done`, `event: error`."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 413 Evaluate Stream Api Evaluate Stream Post"
+                }
+              }
+            },
+            "description": "The body, or an upload inside it, is over the cap. `REQUEST_TOO_LARGE`."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 422 Evaluate Stream Api Evaluate Stream Post"
+                }
+              }
+            },
+            "description": "The request was understood and refused. Any of the three shapes: FastAPI's array of issues for a malformed body, a located-issues sentence for a document RenderCV rejects, or a `PDF_EXTRACT_FAILED` envelope for an unreadable upload."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 429 Evaluate Stream Api Evaluate Stream Post"
+                }
+              }
+            },
+            "description": "The caller has spent its request budget. `RATE_LIMITED`, with `Retry-After`."
+          }
+        },
+        "summary": "Evaluate Stream"
+      }
+    },
+    "/api/health": {
+      "get": {
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/api/master-resume": {
+      "delete": {
+        "operationId": "remove_resume_api_master_resume_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 404 Remove Resume Api Master Resume Delete"
+                }
+              }
+            },
+            "description": "No such resource. `{detail}`, with no `code`."
+          }
+        },
+        "summary": "Remove Resume"
+      },
+      "get": {
+        "operationId": "get_resume_api_master_resume_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MasterResume"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 404 Get Resume Api Master Resume Get"
+                }
+              }
+            },
+            "description": "No such resource. `{detail}`, with no `code`."
+          }
+        },
+        "summary": "Get Resume"
+      },
+      "put": {
+        "operationId": "save_resume_api_master_resume_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MasterResumeBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MasterResume"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 413 Save Resume Api Master Resume Put"
+                }
+              }
+            },
+            "description": "The body, or an upload inside it, is over the cap. `REQUEST_TOO_LARGE`."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 422 Save Resume Api Master Resume Put"
+                }
+              }
+            },
+            "description": "The request was understood and refused. Any of the three shapes: FastAPI's array of issues for a malformed body, a located-issues sentence for a document RenderCV rejects, or a `PDF_EXTRACT_FAILED` envelope for an unreadable upload."
+          }
+        },
+        "summary": "Save Resume"
+      }
+    },
+    "/api/master-resume/import": {
+      "post": {
+        "operationId": "import_pdf_api_master_resume_import_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_pdf_api_master_resume_import_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MasterResume"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 400 Import Pdf Api Master Resume Import Post"
+                }
+              }
+            },
+            "description": "The request is malformed in a way the route checks itself."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 413 Import Pdf Api Master Resume Import Post"
+                }
+              }
+            },
+            "description": "The body, or an upload inside it, is over the cap. `REQUEST_TOO_LARGE`."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 422 Import Pdf Api Master Resume Import Post"
+                }
+              }
+            },
+            "description": "The request was understood and refused. Any of the three shapes: FastAPI's array of issues for a malformed body, a located-issues sentence for a document RenderCV rejects, or a `PDF_EXTRACT_FAILED` envelope for an unreadable upload."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 429 Import Pdf Api Master Resume Import Post"
+                }
+              }
+            },
+            "description": "The caller has spent its request budget. `RATE_LIMITED`, with `Retry-After`."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 500 Import Pdf Api Master Resume Import Post"
+                }
+              }
+            },
+            "description": "`INTERNAL_ERROR`, `RENDER_FAILED` or `LLM_AUTH_ERROR`. The body never carries the cause; it is logged with the request id instead (D-53)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 503 Import Pdf Api Master Resume Import Post"
+                }
+              }
+            },
+            "description": "The provider is unreachable or answered with nothing. `LLM_UNAVAILABLE` or `LLM_EMPTY_RESPONSE`."
+          }
+        },
+        "summary": "Import Pdf"
+      }
+    },
+    "/api/master-resume/preview": {
+      "get": {
+        "description": "Render the current master resume YAML to PDF and return it.",
+        "operationId": "preview_master_resume_api_master_resume_preview_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The master resume, rendered."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 404 Preview Master Resume Api Master Resume Preview Get"
+                }
+              }
+            },
+            "description": "No such resource. `{detail}`, with no `code`."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 422 Preview Master Resume Api Master Resume Preview Get"
+                }
+              }
+            },
+            "description": "The request was understood and refused. Any of the three shapes: FastAPI's array of issues for a malformed body, a located-issues sentence for a document RenderCV rejects, or a `PDF_EXTRACT_FAILED` envelope for an unreadable upload."
+          }
+        },
+        "summary": "Preview Master Resume"
+      }
+    },
+    "/api/resumes": {
+      "get": {
+        "description": "One page of the library.\n\nD-10. The repository has clamped `page` and `limit` since task 1.2, so\n`?limit=-1` stopped returning the whole table then; what was still missing\nis that the *documented* contract said `int`, so a generated client had no\nway to know the bound existed and a caller learned it by being silently\ngiven something else. These four constraints are the same bound, declared:\nan out-of-range value is now a 422 naming the field.\n\n`sort` and `order` were the sharper half of the same gap. Both reached a\nrepository that turns anything other than `date` into a sort by job\ndescription and anything other than `desc` into ascending, so `?sort=nmae`\nanswered 200 with a page sorted by something the caller did not ask for.\nThe two `Literal`s are what the frontend has always sent.",
+        "operationId": "list_generated_api_resumes_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "date",
+              "enum": ["date", "jd"],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": "desc",
+              "enum": ["asc", "desc"],
+              "title": "Order",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 422 List Generated Api Resumes Get"
+                }
+              }
+            },
+            "description": "The request was understood and refused. Any of the three shapes: FastAPI's array of issues for a malformed body, a located-issues sentence for a document RenderCV rejects, or a `PDF_EXTRACT_FAILED` envelope for an unreadable upload."
+          }
+        },
+        "summary": "List Generated"
+      }
+    },
+    "/api/resumes/stream": {
+      "post": {
+        "description": "Run the tailoring pipeline, narrating it as server-sent events.\n\nThe work is `domain.tailoring`; this handler reads what the pipeline needs,\nturns each `Stage` into the progress frame the frontend expects, and hands\nthe result to the one function that writes it.",
+        "operationId": "generate_resume_stream_api_resumes_stream_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "description": "The JSON after `data:` on one frame. Which schema applies is decided by the preceding `event:` line, which is not part of the payload: `progress` is `SseProgressFrame`; `done` is `GenerateDoneFrame`; `error` is `SseErrorFrame`.",
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/SseProgressFrame"
+                    },
+                    {
+                      "$ref": "#/components/schemas/GenerateDoneFrame"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SseErrorFrame"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Server-sent events. Always 200, including on failure: the status line is sent before the work starts, so an error arrives as an `event: error` frame in this body. Read the frames, not the status.\n\nFrames, in order: `event: progress`, `event: done`, `event: error`."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 413 Generate Resume Stream Api Resumes Stream Post"
+                }
+              }
+            },
+            "description": "The body, or an upload inside it, is over the cap. `REQUEST_TOO_LARGE`."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 422 Generate Resume Stream Api Resumes Stream Post"
+                }
+              }
+            },
+            "description": "The request was understood and refused. Any of the three shapes: FastAPI's array of issues for a malformed body, a located-issues sentence for a document RenderCV rejects, or a `PDF_EXTRACT_FAILED` envelope for an unreadable upload."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 429 Generate Resume Stream Api Resumes Stream Post"
+                }
+              }
+            },
+            "description": "The caller has spent its request budget. `RATE_LIMITED`, with `Retry-After`."
+          }
+        },
+        "summary": "Generate Resume Stream"
+      }
+    },
+    "/api/resumes/{resume_id}": {
+      "delete": {
+        "operationId": "delete_generated_api_resumes__resume_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resume_id",
+            "required": true,
+            "schema": {
+              "title": "Resume Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 404 Delete Generated Api Resumes  Resume Id  Delete"
+                }
+              }
+            },
+            "description": "No such resource. `{detail}`, with no `code`."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 422 Delete Generated Api Resumes  Resume Id  Delete"
+                }
+              }
+            },
+            "description": "The request was understood and refused. Any of the three shapes: FastAPI's array of issues for a malformed body, a located-issues sentence for a document RenderCV rejects, or a `PDF_EXTRACT_FAILED` envelope for an unreadable upload."
+          }
+        },
+        "summary": "Delete Generated"
+      },
+      "get": {
+        "operationId": "get_generated_api_resumes__resume_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resume_id",
+            "required": true,
+            "schema": {
+              "title": "Resume Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeneratedResume"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 404 Get Generated Api Resumes  Resume Id  Get"
+                }
+              }
+            },
+            "description": "No such resource. `{detail}`, with no `code`."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 422 Get Generated Api Resumes  Resume Id  Get"
+                }
+              }
+            },
+            "description": "The request was understood and refused. Any of the three shapes: FastAPI's array of issues for a malformed body, a located-issues sentence for a document RenderCV rejects, or a `PDF_EXTRACT_FAILED` envelope for an unreadable upload."
+          }
+        },
+        "summary": "Get Generated"
+      },
+      "patch": {
+        "description": "Rename a resume, or replace its YAML.\n\nD-04: a write path that stores a document refuses one that will not\nrender, instead of storing it and surfacing the problem at render time.\nThe check is `resume_schema.validate` \u2014 the same schema, the same theme\nand the same issue objects the renderer reports \u2014 run off the event loop\nbecause it builds RenderCV's model.\n\nD-57's other half is still open here: a successful YAML replacement leaves\n`pdf_path` pointing at a PDF rendered from the previous document. Calling\n`POST /api/resumes/{id}/render` after a PATCH is the current answer.",
+        "operationId": "patch_generated_api_resumes__resume_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resume_id",
+            "required": true,
+            "schema": {
+              "title": "Resume Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResumeUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeneratedResume"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 404 Patch Generated Api Resumes  Resume Id  Patch"
+                }
+              }
+            },
+            "description": "No such resource. `{detail}`, with no `code`."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 413 Patch Generated Api Resumes  Resume Id  Patch"
+                }
+              }
+            },
+            "description": "The body, or an upload inside it, is over the cap. `REQUEST_TOO_LARGE`."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 422 Patch Generated Api Resumes  Resume Id  Patch"
+                }
+              }
+            },
+            "description": "The request was understood and refused. Any of the three shapes: FastAPI's array of issues for a malformed body, a located-issues sentence for a document RenderCV rejects, or a `PDF_EXTRACT_FAILED` envelope for an unreadable upload."
+          }
+        },
+        "summary": "Patch Generated"
+      }
+    },
+    "/api/resumes/{resume_id}/pdf": {
+      "get": {
+        "operationId": "get_pdf_api_resumes__resume_id__pdf_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resume_id",
+            "required": true,
+            "schema": {
+              "title": "Resume Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The stored PDF, inline."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 404 Get Pdf Api Resumes  Resume Id  Pdf Get"
+                }
+              }
+            },
+            "description": "No such resource. `{detail}`, with no `code`."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 422 Get Pdf Api Resumes  Resume Id  Pdf Get"
+                }
+              }
+            },
+            "description": "The request was understood and refused. Any of the three shapes: FastAPI's array of issues for a malformed body, a located-issues sentence for a document RenderCV rejects, or a `PDF_EXTRACT_FAILED` envelope for an unreadable upload."
+          }
+        },
+        "summary": "Get Pdf"
+      }
+    },
+    "/api/resumes/{resume_id}/render": {
+      "post": {
+        "operationId": "render_pdf_api_resumes__resume_id__render_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resume_id",
+            "required": true,
+            "schema": {
+              "title": "Resume Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeneratedResume"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 404 Render Pdf Api Resumes  Resume Id  Render Post"
+                }
+              }
+            },
+            "description": "No such resource. `{detail}`, with no `code`."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 422 Render Pdf Api Resumes  Resume Id  Render Post"
+                }
+              }
+            },
+            "description": "The request was understood and refused. Any of the three shapes: FastAPI's array of issues for a malformed body, a located-issues sentence for a document RenderCV rejects, or a `PDF_EXTRACT_FAILED` envelope for an unreadable upload."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 500 Render Pdf Api Resumes  Resume Id  Render Post"
+                }
+              }
+            },
+            "description": "`INTERNAL_ERROR`, `RENDER_FAILED` or `LLM_AUTH_ERROR`. The body never carries the cause; it is logged with the request id instead (D-53)."
+          }
+        },
+        "summary": "Render Pdf"
+      }
+    },
+    "/api/rules": {
+      "delete": {
+        "operationId": "reset_api_rules_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GenerationRule"
+                  },
+                  "title": "Response Reset Api Rules Delete",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Reset"
+      },
+      "get": {
+        "operationId": "get_api_rules_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GenerationRule"
+                  },
+                  "title": "Response Get Api Rules Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get"
+      },
+      "put": {
+        "operationId": "update_api_rules_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RulesBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GenerationRule"
+                  },
+                  "title": "Response Update Api Rules Put",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 413 Update Api Rules Put"
+                }
+              }
+            },
+            "description": "The body, or an upload inside it, is over the cap. `REQUEST_TOO_LARGE`."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 422 Update Api Rules Put"
+                }
+              }
+            },
+            "description": "The request was understood and refused. Any of the three shapes: FastAPI's array of issues for a malformed body, a located-issues sentence for a document RenderCV rejects, or a `PDF_EXTRACT_FAILED` envelope for an unreadable upload."
+          }
+        },
+        "summary": "Update"
+      }
+    },
+    "/api/system-prompt": {
+      "delete": {
+        "operationId": "reset_api_system_prompt_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemPrompt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Reset"
+      },
+      "get": {
+        "operationId": "get_api_system_prompt_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemPrompt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 404 Get Api System Prompt Get"
+                }
+              }
+            },
+            "description": "No such resource. `{detail}`, with no `code`."
+          }
+        },
+        "summary": "Get"
+      },
+      "put": {
+        "operationId": "update_api_system_prompt_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SystemPromptBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemPrompt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 413 Update Api System Prompt Put"
+                }
+              }
+            },
+            "description": "The body, or an upload inside it, is over the cap. `REQUEST_TOO_LARGE`."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 422 Update Api System Prompt Put"
+                }
+              }
+            },
+            "description": "The request was understood and refused. Any of the three shapes: FastAPI's array of issues for a malformed body, a located-issues sentence for a document RenderCV rejects, or a `PDF_EXTRACT_FAILED` envelope for an unreadable upload."
+          }
+        },
+        "summary": "Update"
+      }
+    }
+  }
+}
