@@ -2,6 +2,7 @@
 from __future__ import annotations
 import asyncio
 import json
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,16 +12,28 @@ from pydantic import BaseModel, Field
 from resumetailor.backend_api import BackendAPI
 from resumetailor.core.config import get_settings
 from resumetailor.db.repositories import (
-    list_resumes, create_resume, get_resume, update_resume, delete_resume,
+    list_resumes, get_resume, update_resume, delete_resume,
     get_master_resume, get_rules,
 )
 from resumetailor.deps import get_backend
-from resumetailor.core.errors import LLMAuthError, LLMUnavailableError, RenderError, PDFExtractError
+from resumetailor.core.errors import BackendError, LLMAuthError, LLMUnavailableError, RenderError, PDFExtractError
 from resumetailor.core.security import MAX_JOB_DESCRIPTION_CHARS, resolve_within
-from resumetailor.prompts import GENERATION_SYSTEM_PROMPT, CRITIQUE_SYSTEM_PROMPT, rules_block
+from resumetailor.domain.tailoring import Stage, TailoredResume, store_tailored_resume, tailor
+from resumetailor.rendering.errors import RenderIssue
 from resumetailor.resume_schema.normalize import normalize_to_rendercv
+from resumetailor.resume_schema.validate import validate
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+# The SSE contract. The frontend matches on these strings, so they live at the
+# wire boundary and the pipeline yields `Stage` members instead (D-04's
+# extraction; see domain/tailoring.py).
+_PROGRESS_MESSAGES: dict[Stage, str] = {
+    Stage.ANALYZING: "Analyzing job description...",
+    Stage.TAILORING: "Tailoring content...",
+    Stage.RENDERING: "Rendering PDF...",
+}
 
 
 def _db_path() -> str:
@@ -47,6 +60,39 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, default=_jsonable)}\n\n"
 
 
+def _error_frame(exc: BackendError, code: str) -> str:
+    """One SSE error frame, and the log line that keeps the detail.
+
+    D-53, on the streaming path. An SSE error never reaches the exception
+    handler in `core/errors.py`, so both halves of that fix have to happen
+    here: the client gets the class's fixed `client_message`, and the operator
+    gets `str(exc)` — the render subprocess's output, the provider's exception
+    text — at ERROR, with the request id `core/logging.py` attaches. `code` is
+    passed in rather than read off the exception because the literals below are
+    the wire values today, and reconciling them with `exc.code` is task 2.2's
+    (see its PLAN.md row).
+    """
+    logger.error(
+        "sse domain error: %s",
+        code,
+        exc_info=exc,
+        extra={"error_code": code, "error_detail": exc.detail},
+    )
+    return _sse("error", {"error": exc.client_message, "code": code})
+
+
+def _issue_detail(issues: list[RenderIssue]) -> str:
+    """The validation failures, as one line the user can act on.
+
+    Safe to return, unlike a `RenderError`'s text (D-53): these describe the
+    submitted document, field by field, and say nothing about the inside of
+    the process.
+    """
+    return "This resume is not valid: " + "; ".join(
+        f"{issue.path}: {issue.message}" for issue in issues
+    )
+
+
 class GenerateRequest(BaseModel):
     job_description: str = Field(max_length=MAX_JOB_DESCRIPTION_CHARS)
 
@@ -68,95 +114,51 @@ async def generate_resume_stream(
     body: GenerateRequest,
     api: BackendAPI = Depends(get_backend),
 ):
+    """Run the tailoring pipeline, narrating it as server-sent events.
+
+    The work is `domain.tailoring`; this handler reads what the pipeline needs,
+    turns each `Stage` into the progress frame the frontend expects, and hands
+    the result to the one function that writes it.
+    """
     async def event_gen():
         try:
-            # Fetch master resume
             master = await asyncio.to_thread(get_master_resume, _db_path())
             if master is None:
                 yield _sse("error", {"error": "No master resume found", "code": "NO_MASTER_RESUME"})
                 return
 
-            yield _sse("progress", {"message": "Analyzing job description..."})
-
-            # Normalise master resume to valid rendercv before feeding to the LLM
-            master_yaml = normalize_to_rendercv(master.yaml_content).yaml
-
-            # User-configured limits override the prompt's default counts.
-            # `rules_block` takes dicts; the repository returns models now, and
-            # prompts.py belongs to another task.
             rules = await asyncio.to_thread(get_rules, _db_path())
-            rules_suffix = rules_block([rule.model_dump() for rule in rules])
 
-            # Pass 1: generate
-            gen_response = await api.complete(
-                [
-                    {"role": "system", "content": GENERATION_SYSTEM_PROMPT + rules_suffix},
-                    {"role": "user", "content": f"JD:\n{body.job_description}\n\nMaster:\n{master_yaml}"},
-                ],
-                response_format={
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "tailored_resume",
-                        "schema": {
-                            "type": "object",
-                            "properties": {"yaml_content": {"type": "string"}},
-                            "required": ["yaml_content"],
-                            "additionalProperties": False,
-                        },
-                        "strict": True,
-                    },
-                },
-            )
-            draft_yaml = normalize_to_rendercv(json.loads(gen_response)["yaml_content"]).yaml
-
-            yield _sse("progress", {"message": "Tailoring content..."})
-
-            # Pass 2: audit
-            audit_response = await api.complete(
-                [
-                    {"role": "system", "content": CRITIQUE_SYSTEM_PROMPT + rules_suffix},
-                    {"role": "user", "content": f"Draft:\n{draft_yaml}\n\nMaster:\n{master_yaml}\n\nJD:\n{body.job_description}"},
-                ]
-            )
-            # Strip AUDIT_START...AUDIT_END block
-            if "AUDIT_END" in audit_response:
-                final_yaml = audit_response.split("AUDIT_END", 1)[1].strip()
-            else:
-                final_yaml = audit_response.strip()
-            final_yaml = normalize_to_rendercv(final_yaml).yaml
-
-            yield _sse("progress", {"message": "Rendering PDF..."})
-
-            # Render PDF
-            pdf_bytes = await api.render(final_yaml)
-
-            # Persist
-            name = f"Resume — {body.job_description[:40]}"
-            row = await asyncio.to_thread(
-                create_resume, _db_path(), name, body.job_description, final_yaml
-            )
-            resume_id = row.id
-
-            # Save PDF
-            pdf_path = Path(_pdfs_dir()) / f"{resume_id}.pdf"
-            pdf_path.parent.mkdir(parents=True, exist_ok=True)
-            pdf_path.write_bytes(pdf_bytes)
-
-            row = await asyncio.to_thread(
-                update_resume, _db_path(), resume_id, pdf_path=f"{resume_id}.pdf"
-            )
-
-            yield _sse("done", {"result": row})
+            async for event in tailor(
+                api,
+                master_yaml=master.yaml_content,
+                job_description=body.job_description,
+                rules=rules,
+            ):
+                if isinstance(event, TailoredResume):
+                    row = await asyncio.to_thread(
+                        store_tailored_resume,
+                        _db_path(), _pdfs_dir(),
+                        job_description=body.job_description, result=event,
+                    )
+                    yield _sse("done", {"result": row})
+                else:
+                    yield _sse("progress", {"message": _PROGRESS_MESSAGES[event]})
+        # D-53: the client gets `exc.client_message`, never `str(exc)`. See
+        # `_error_frame`. Codes are unchanged — the UI branches on them.
         except LLMAuthError as exc:
-            yield _sse("error", {"error": str(exc), "code": "LLM_AUTH_ERROR"})
+            yield _error_frame(exc, "LLM_AUTH_ERROR")
         except LLMUnavailableError as exc:
-            yield _sse("error", {"error": str(exc), "code": "LLM_UNAVAILABLE"})
+            yield _error_frame(exc, "LLM_UNAVAILABLE")
         except RenderError as exc:
-            yield _sse("error", {"error": str(exc), "code": "RENDER_FAILED"})
+            yield _error_frame(exc, "RENDER_FAILED")
         except PDFExtractError as exc:
-            yield _sse("error", {"error": str(exc), "code": "PDF_EXTRACT_FAILED"})
-        except Exception as exc:
-            yield _sse("error", {"error": str(exc), "code": "GENERATION_FAILED"})
+            yield _error_frame(exc, "PDF_EXTRACT_FAILED")
+        except Exception:
+            # Not a domain error, so there is no vetted sentence to send: the
+            # text of an unexpected exception is exactly what must not travel.
+            logger.exception("sse generation failed", extra={"error_code": "GENERATION_FAILED"})
+            yield _sse("error", {"error": BackendError.client_message, "code": "GENERATION_FAILED"})
 
     return StreamingResponse(event_gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache"})
@@ -172,6 +174,23 @@ async def get_generated(resume_id: int):
 
 @router.patch("/api/resumes/{resume_id}")
 async def patch_generated(resume_id: int, body: ResumeUpdate):
+    """Rename a resume, or replace its YAML.
+
+    D-04: a write path that stores a document refuses one that will not
+    render, instead of storing it and surfacing the problem at render time.
+    The check is `resume_schema.validate` — the same schema, the same theme
+    and the same issue objects the renderer reports — run off the event loop
+    because it builds RenderCV's model.
+
+    D-57's other half is still open here: a successful YAML replacement leaves
+    `pdf_path` pointing at a PDF rendered from the previous document. Calling
+    `POST /api/resumes/{id}/render` after a PATCH is the current answer.
+    """
+    if body.yaml_content is not None:
+        _, issues = await asyncio.to_thread(validate, body.yaml_content)
+        if issues:
+            raise HTTPException(status_code=422, detail=_issue_detail(issues))
+
     row = await asyncio.to_thread(
         update_resume, _db_path(), resume_id,
         name=body.name, yaml_content=body.yaml_content,
@@ -200,7 +219,11 @@ async def render_pdf(resume_id: int, api: BackendAPI = Depends(get_backend)):
     row = await asyncio.to_thread(get_resume, _db_path(), resume_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Resume not found")
-    pdf_bytes = await api.render(row.yaml_content)
+    # D-57: normalize first, exactly as the generation pipeline and
+    # `GET /api/master-resume/preview` do. This route used to hand
+    # `row.yaml_content` to the renderer untouched, so the same document could
+    # render through one path and fail through the other.
+    pdf_bytes = await api.render(normalize_to_rendercv(row.yaml_content).yaml)
     pdf_path = Path(_pdfs_dir()) / f"{resume_id}.pdf"
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
     pdf_path.write_bytes(pdf_bytes)
