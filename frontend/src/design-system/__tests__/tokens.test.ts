@@ -153,11 +153,22 @@ describe("source hygiene", () => {
     expect(source).not.toMatch(/\bhsla?\(/);
   });
 
-  // Section 2.6: "No hand-drawn SVG paths anywhere."
-  it.each(sourceFiles)("%s draws no SVG of its own", (_name, source) => {
-    expect(codeOnly(source)).not.toMatch(/<svg/);
+  // Section 2.6: "No hand-drawn SVG paths anywhere." This bans icons drawn by
+  // hand instead of imported from Phosphor. `ScoreDial` is the one deliberate
+  // exception, per 4.1's own inventory ("ScoreDial | native SVG"): it is a
+  // drawn data primitive, not an icon, and `<circle>` is the only element it
+  // uses. `<path>` stays banned everywhere without exception, including here:
+  // an icon shape is exactly what this rule exists to keep out of the dial.
+  const ALLOWED_SVG = new Set(["ScoreDial.tsx"]);
+  it.each(sourceFiles)("%s draws no hand-rolled icon path", (_name, source) => {
     expect(codeOnly(source)).not.toMatch(/<path/);
   });
+  it.each(sourceFiles.filter(([name]) => !ALLOWED_SVG.has(name)))(
+    "%s draws no SVG of its own",
+    (_name, source) => {
+      expect(codeOnly(source)).not.toMatch(/<svg/);
+    },
+  );
 
   // Section 2.2: 12px is the floor, so no smaller arbitrary size may appear.
   it.each(sourceFiles)("%s renders nothing below 12px", (_name, source) => {

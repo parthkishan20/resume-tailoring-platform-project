@@ -6,7 +6,7 @@ import { Button, EmptyState, ErrorState, ProgressRail, type ProgressStage } from
 import { useInvalidateResumes, useRules } from "@/features/queries";
 import { JobDescriptionField } from "@/features/workspace/JobDescriptionField";
 import { useWorkspace } from "@/features/workspace/WorkspaceContext";
-import { readSseStream } from "@/lib/sse";
+import { streamTailor } from "@/lib/api";
 import type { GeneratedResume } from "@/lib/types";
 
 /**
@@ -53,9 +53,24 @@ const IDLE: RunState = { status: "idle", stageIndex: 0, error: null };
  * left for 3.1 is everything that is actually the feature: the result surface,
  * the five states of 4.3, retry that preserves partial work, and evaluating
  * the generated document rather than the master (D-45, D-41).
+ *
+ * ## D-41, the half that is Tailor's
+ *
+ * `POST /api/resumes/stream` tailors whatever `master_resume` currently holds
+ * in the database; it takes no document override (unlike
+ * `/api/evaluate/stream`, which accepts arbitrary YAML, so Evaluate can read
+ * the live buffer directly). Adding one is an API-contract change outside
+ * this task's file ownership (`api/routers/resumes.py` belongs to
+ * `api-contract`/`backend-domain`; see the blocker recorded in
+ * `docs/reports/3-3.1.md`). The fix available here: if the master buffer has
+ * unsaved edits when the user starts a run, they are saved first, so the
+ * document the backend reads back out is always the one on screen, not a
+ * stale saved copy. A failed save aborts the run rather than silently
+ * tailoring the old document.
  */
 export function TailorPanel({ onEditRules }: { onEditRules: () => void }) {
-  const { jobDescription, openResume, setInspectorTab } = useWorkspace();
+  const { jobDescription, openResume, setInspectorTab, masterDirty, saveMasterDraft } =
+    useWorkspace();
   const invalidateResumes = useInvalidateResumes();
   const rules = useRules();
 
@@ -77,21 +92,34 @@ export function TailorPanel({ onEditRules }: { onEditRules: () => void }) {
     abortRef.current = controller;
     setRun({ status: "running", stageIndex: 0, error: null });
 
+    if (masterDirty) {
+      try {
+        await saveMasterDraft();
+      } catch (error: unknown) {
+        setRun({
+          status: "error",
+          stageIndex: 0,
+          error:
+            error instanceof Error
+              ? `Your unsaved edits could not be saved: ${error.message}`
+              : "Your unsaved edits could not be saved",
+        });
+        return;
+      }
+    }
+
     let produced: GeneratedResume | null = null;
     try {
-      for await (const event of readSseStream(
-        "/api/resumes/stream",
+      for await (const frame of streamTailor(
         { job_description: jobDescription },
-        controller.signal,
+        { signal: controller.signal },
       )) {
-        if (event.event === "progress") {
-          const { message } = event.data as { message: string };
-          setRun((current) => ({ ...current, stageIndex: stageIndexFor(message) }));
-        } else if (event.event === "done") {
-          produced = (event.data as { result: GeneratedResume }).result;
-        } else if (event.event === "error") {
-          const { error } = event.data as { error: string };
-          setRun((current) => ({ ...current, status: "error", error }));
+        if (frame.event === "progress") {
+          setRun((current) => ({ ...current, stageIndex: stageIndexFor(frame.data.message) }));
+        } else if (frame.event === "done") {
+          produced = frame.data.result;
+        } else if (frame.event === "error") {
+          setRun((current) => ({ ...current, status: "error", error: frame.data.error }));
           return;
         }
       }

@@ -8,11 +8,12 @@ import {
   AlertDialogTrigger,
   Button,
   cn,
+  DocumentFrame,
   ErrorState,
+  ModeSwitch,
+  type DocumentMode,
 } from "@/design-system";
 import { ResizeHandle } from "@/features/workspace/ResizeHandle";
-import { DocumentFrame } from "./DocumentFrame";
-import { ModeSwitch, type DocumentMode } from "./ModeSwitch";
 import { YamlEditor } from "./YamlEditor";
 
 export interface MasterDocumentProps {

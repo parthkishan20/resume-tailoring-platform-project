@@ -5,9 +5,40 @@
  */
 @import "../design-system/tokens.css";
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/*
+ * Tailwind v4 (decision D6, closed by task 3.1). `@import "tailwindcss"`
+ * replaces the three v3 `@tailwind` directives.
+ *
+ * `@config` loads `tailwind.config.ts` as-is rather than this task rewriting
+ * every `theme.extend` block into a CSS `@theme`, which v4 supports
+ * specifically as a migration path for a config this size. The full `lp-*`
+ * token layer, every Letterpress utility name, and the deprecated
+ * "tailor's thread" compatibility keys documented below all keep resolving
+ * exactly as they did under v3, which is what makes it possible to upgrade
+ * the engine without also rewriting or visually re-verifying every one of the
+ * dozens of files that reference them.
+ */
+@import "tailwindcss";
+@config "../../tailwind.config.ts";
+
+/*
+ * v4 compatibility shim, not a design choice: three files this task's file
+ * ownership does not cover (`components/ChatPanel.tsx`,
+ * `components/ResumeListPanel.tsx` and the `components/ui/*` controls they
+ * use, all task 3.2's) use a handful of *bare* utilities whose default value
+ * v4 changed from v3's. Of the five D6 flagged (`rounded`, `outline-none`,
+ * `ring`/`ring-1`, bare `border`, bare `shadow`), only bare `rounded` is both
+ * still present in an un-migrated file and actually value-changing here
+ * (`ResumeListPanel.tsx`'s delete button, `ui/SegmentedControl.tsx`'s
+ * segments); the rest are either explicit (`ring-1`) or paired with an
+ * explicit color utility that already wins the cascade. Pinning `rounded` to
+ * its v3 value keeps those two controls pixel-identical under v4 without
+ * editing files outside this task's ownership; task 3.2 removes this block
+ * when it rehosts `ChatPanel`/`ResumeListPanel` onto the design system.
+ */
+@utility rounded {
+  border-radius: 0.25rem;
+}
 
 /*
  * COMPATIBILITY ALIASES, not a palette.

@@ -3,12 +3,12 @@
 import * as React from "react";
 import { useToast } from "@/design-system";
 import { LibraryDocument } from "@/features/library/LibraryDocument";
-import { useDeleteMasterResume, useSaveMasterResume } from "@/features/queries";
+import { useDeleteMasterResume } from "@/features/queries";
 import { usePersistedNumber } from "@/features/workspace/persist";
 import { useWorkspace } from "@/features/workspace/WorkspaceContext";
 import type { MasterResume } from "@/lib/types";
+import type { DocumentMode } from "@/design-system";
 import { MasterDocument } from "./MasterDocument";
-import type { DocumentMode } from "./ModeSwitch";
 
 export const SPLIT_MIN = 25;
 export const SPLIT_MAX = 75;
@@ -48,9 +48,28 @@ export interface DocumentRegionProps {
  * assistant rewrites the master resume while there are unsaved edits on
  * screen, the edits win and stay on screen; the old panel's `useState`
  * initialiser silently ignored the new prop instead.
+ *
+ * ## The buffer itself moved, in task 3.1
+ *
+ * The draft, the dirty flag and the save action used to be local state here.
+ * They now live in `WorkspaceContext` (`masterYaml`/`masterDirty`/
+ * `setMasterDraft`/`saveMasterDraft`), because Tailor and Evaluate, mounted as
+ * siblings in the inspector rather than descendants of this component, need
+ * the same live buffer to satisfy D-41 ("operate on the editor's live buffer,
+ * not the last saved copy"). This component still owns everything about
+ * *rendering* the buffer: the editor, the split, the save button, delete.
  */
 export function DocumentRegion({ masterResume }: DocumentRegionProps) {
-  const { destination } = useWorkspace();
+  const {
+    destination,
+    masterYaml,
+    masterDirty,
+    setMasterDraft,
+    discardMasterDraft,
+    saveMasterDraft,
+    masterSaving,
+    masterSaveError,
+  } = useWorkspace();
   const { toast } = useToast();
 
   const [mode, setMode] = React.useState<DocumentMode>("split");
@@ -62,67 +81,36 @@ export function DocumentRegion({ masterResume }: DocumentRegionProps) {
   );
   const [previewKey, setPreviewKey] = React.useState(0);
 
-  // `null` means "no local edits", which is not the same as "an empty
-  // document": the latter is a legitimate draft the user can save.
-  const [draft, setDraft] = React.useState<string | null>(null);
-  const serverYaml = masterResume.yaml_content;
-  const lastServerYaml = React.useRef(serverYaml);
-
-  React.useEffect(() => {
-    if (serverYaml === lastServerYaml.current) return;
-    setDraft((current) =>
-      current === null || current === lastServerYaml.current ? null : current,
-    );
-    lastServerYaml.current = serverYaml;
-  }, [serverYaml]);
-
-  const yaml = draft ?? serverYaml;
-  const dirty = draft !== null && draft !== serverYaml;
-
-  const save = useSaveMasterResume();
   const remove = useDeleteMasterResume();
 
-  React.useEffect(() => {
-    if (!dirty) return;
-    const warn = (event: BeforeUnloadEvent) => {
-      // Assigning returnValue is what actually triggers the browser's own
-      // confirmation; the string is never displayed by any current browser.
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
-
   const handleSave = React.useCallback(() => {
-    if (save.isPending) return;
-    save.mutate(yaml, {
-      onSuccess: () => {
-        setDraft(null);
+    if (masterSaving || !masterDirty) return;
+    saveMasterDraft()
+      .then(() => {
         setPreviewKey((key) => key + 1);
         toast({ title: "Master resume saved", tone: "positive" });
-      },
-    });
-  }, [save, yaml, toast]);
+      })
+      .catch(() => {
+        // `masterSaveError` from context already renders the banner below.
+      });
+  }, [masterSaving, masterDirty, saveMasterDraft, toast]);
 
   const handleDelete = React.useCallback(() => {
     remove.mutate(undefined, {
       onSuccess: () => {
-        setDraft(null);
+        discardMasterDraft();
         toast({ title: "Master resume deleted" });
       },
     });
-  }, [remove, toast]);
-
-  const saveError = save.isError ? save.error.message : null;
+  }, [remove, discardMasterDraft, toast]);
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {destination === "master" ? (
         <MasterDocument
-          yaml={yaml}
-          onYamlChange={setDraft}
-          dirty={dirty}
+          yaml={masterYaml}
+          onYamlChange={setMasterDraft}
+          dirty={masterDirty}
           updatedAt={masterResume.updated_at}
           mode={mode}
           onModeChange={setMode}
@@ -131,8 +119,8 @@ export function DocumentRegion({ masterResume }: DocumentRegionProps) {
           splitMin={SPLIT_MIN}
           splitMax={SPLIT_MAX}
           onSave={handleSave}
-          saving={save.isPending}
-          saveError={saveError}
+          saving={masterSaving}
+          saveError={masterSaveError}
           onDelete={handleDelete}
           previewKey={previewKey}
         />

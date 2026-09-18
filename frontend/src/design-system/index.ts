@@ -45,6 +45,15 @@ export type { SkeletonProps } from "./Skeleton";
 export { ProgressRail } from "./ProgressRail";
 export type { ProgressRailProps, ProgressStage } from "./ProgressRail";
 
+export { ScoreDial } from "./ScoreDial";
+export type { ScoreDialProps } from "./ScoreDial";
+
+export { ModeSwitch } from "./ModeSwitch";
+export type { DocumentMode } from "./ModeSwitch";
+
+export { DocumentFrame } from "./DocumentFrame";
+export type { DocumentFrameProps } from "./DocumentFrame";
+
 export { EmptyState } from "./EmptyState";
 export type { EmptyStateProps } from "./EmptyState";
 
