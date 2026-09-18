@@ -9,7 +9,9 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import type { ResumeUpdateBody } from "@/lib/api";
 import type {
+  ChatMessage,
   GeneratedResume,
   MasterResume,
   ResumeListResponse,
@@ -37,7 +39,7 @@ import type {
  *     ["resumes", "detail", id]                     one generated resume
  *     ["rules"]                                    generation rules
  *     ["system-prompt"]                            the assistant prompt
- *     ["chat", "history"]                          reserved for task 3.2
+ *     ["chat", "history"]                          the transcript
  *
  * Tasks 3.1 and 3.2 add to this file rather than calling `useQuery` with an
  * inline key. Invalidate the widest prefix that is still correct:
@@ -125,20 +127,62 @@ export function useResumeList(
 }
 
 /**
- * One generated resume with its `yaml_content` (D-45's back half).
- *
- * `GET /api/resumes` never selects `yaml_content` (a list query has no reason
- * to carry every document's full text), so a row handed to Evaluate by the
- * library list is missing exactly the field Evaluate needs. Gated on `id`
- * being non-null and only enabled when the caller does not already hold the
- * field, so opening a resume straight from a Tailor run (whose `done` event
- * carries the full row) never causes a redundant fetch.
+ * One generated resume, with `yaml_content`. `useResumeList` rows never carry
+ * it (the list query does not select it), so opening a document for editing
+ * needs this second fetch. Gated the same way `useSystemPrompt` is: pass
+ * `enabled: false` and a placeholder id while nothing is selected.
+ */
+export function useResume(id: number, enabled = true): UseQueryResult<GeneratedResume> {
+  return useQuery({
+    queryKey: queryKeys.resumes.detail(id),
+    queryFn: ({ signal }) => api.getResume(id, { signal }),
+    enabled,
+  });
+}
+
+/**
+ * `useResume` for a nullable id, for callers (Evaluate) that don't already
+ * hold an explicit enabled flag: `-1` is never a real id, so the query key
+ * stays derivable and `enabled` collapses to a single `id !== null` check.
  */
 export function useResumeDetail(id: number | null): UseQueryResult<GeneratedResume> {
-  return useQuery({
-    queryKey: queryKeys.resumes.detail(id ?? -1),
-    queryFn: ({ signal }) => api.getResume(id as number, { signal }),
-    enabled: id !== null,
+  return useResume(id ?? -1, id !== null);
+}
+
+/** Rename and/or edit a generated resume's YAML (D-45). Either field, or both. */
+export function useUpdateResume(
+  id: number,
+): UseMutationResult<GeneratedResume, Error, ResumeUpdateBody> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: ResumeUpdateBody) => api.updateResume(id, patch),
+    onSuccess: (updated) => {
+      client.setQueryData(queryKeys.resumes.detail(id), updated);
+      void client.invalidateQueries({ queryKey: queryKeys.resumes.all });
+    },
+  });
+}
+
+/** Re-render a stored resume's PDF from its current saved YAML (D-45). */
+export function useRenderResume(id: number): UseMutationResult<GeneratedResume, Error, void> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.renderResume(id),
+    onSuccess: (updated) => {
+      client.setQueryData(queryKeys.resumes.detail(id), updated);
+      void client.invalidateQueries({ queryKey: queryKeys.resumes.all });
+    },
+  });
+}
+
+export function useDeleteResume(): UseMutationResult<void, Error, number> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.deleteResume(id),
+    onSuccess: (_result, id) => {
+      client.removeQueries({ queryKey: queryKeys.resumes.detail(id) });
+      void client.invalidateQueries({ queryKey: queryKeys.resumes.all });
+    },
   });
 }
 
@@ -199,6 +243,31 @@ export function useResetSystemPrompt(): UseMutationResult<SystemPrompt, Error, v
     onSuccess: (reset) => {
       client.setQueryData(queryKeys.systemPrompt, reset);
     },
+  });
+}
+
+/**
+ * The chat transcript.
+ *
+ * `GET /api/chat` has no query parameters at all (D-21): it returns every
+ * message ever written, oldest first, with no `limit` or cursor. The route
+ * lives in `backend/src/resumetailor/api/`, which this task does not own, so
+ * real API-level pagination is logged as a blocker in PLAN.md rather than
+ * built here. What this hook can do is put the transcript through the same
+ * cache-and-cancel machinery as everything else; `features/assistant/`
+ * windows the rendered list over what this returns, which is the achievable
+ * half of D-21 until the route grows a `limit`.
+ */
+export function useChatHistory(): UseQueryResult<ChatMessage[]> {
+  return useQuery({
+    queryKey: queryKeys.chatHistory,
+    // `?? []` guards against nothing on the real route (`requestJson` never
+    // resolves to `undefined`, only to a schema-validated array); it is here
+    // because TanStack Query v5 throws on an `undefined` query result, and the
+    // Assistant tab is `forceMount`ed everywhere the shell renders, including
+    // integration tests for other surfaces whose `api` mocks stop at the
+    // handful of calls their own scenario needs.
+    queryFn: async ({ signal }) => (await api.getChatHistory({ signal })) ?? [],
   });
 }
 
