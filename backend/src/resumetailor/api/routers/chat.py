@@ -17,6 +17,7 @@ from resumetailor.deps import get_backend
 from resumetailor.core.errors import BackendError
 from resumetailor.core.metrics import sse_stream_tracker
 from resumetailor.core.security import MAX_CHAT_MESSAGE_CHARS
+from resumetailor.domain.assistant import AssistantReply, run_assistant_turn
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -27,6 +28,10 @@ LLM_HISTORY_LIMIT = 30
 
 def _db_path() -> str:
     return get_settings().DB_PATH
+
+
+def _pdfs_dir() -> str:
+    return get_settings().PDFS_DIR
 
 
 def _sse(event: str, data: dict) -> str:
@@ -93,16 +98,34 @@ async def chat_stream(body: ChatRequest, api: BackendAPI = Depends(get_backend))
                 messages = [{"role": "system", "content": system_content}]
                 messages += [{"role": m.role, "content": m.content} for m in history]
 
-                # Stream response
+                # Stream the turn. The orchestration -- running whatever tools
+                # the model asks for and feeding their results back -- is
+                # `domain.assistant.run_assistant_turn` (D-33); this handler
+                # only turns its events into frames, the same split task 2.5
+                # drew between `domain.tailoring.tailor` and this route's
+                # sibling.
                 full_text = ""
-                async for delta in await api.stream(messages):
-                    full_text += delta
-                    yield _sse("token", {"delta": delta})
+                action: dict[str, object] | None = None
+                async for event in run_assistant_turn(
+                    api, db_path=_db_path(), pdfs_dir=_pdfs_dir(), messages=messages
+                ):
+                    if isinstance(event, AssistantReply):
+                        full_text = event.text
+                        action = (
+                            {"type": event.action.type, "resume_id": event.action.resume_id}
+                            if event.action is not None
+                            else None
+                        )
+                    else:
+                        yield _sse("token", {"delta": event})
 
-                # Persist assistant message
+                # Persist assistant message. Tool-call and tool-result turns
+                # stay out of the transcript on purpose: they are working
+                # state for one request, not something `GET /api/chat` should
+                # ever show.
                 await asyncio.to_thread(add_chat_message, _db_path(), "assistant", full_text)
 
-                yield _sse("done", {"result": {"text": full_text, "action": None}})
+                yield _sse("done", {"result": {"text": full_text, "action": action}})
             except BackendError as exc:
                 yield _error_frame(exc)
             except Exception:

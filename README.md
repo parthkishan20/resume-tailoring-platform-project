@@ -42,7 +42,7 @@ Paste any job description to get an ATS keyword match score, a list of matched a
 Every generated resume is saved and sortable by date or job description keyword. Click any to view or re-download the PDF.
 
 **AI Chat Assistant**
-A context-aware chat panel at the bottom of the workstation. Ask it to rewrite a section, add a bullet, or restructure the YAML — changes are applied directly to your master resume.
+A context-aware chat panel at the bottom of the workstation. Ask it to rewrite a section, add a bullet, or restructure the YAML and it edits your master resume directly. It can also generate a tailored resume for a job description, evaluate a resume against one, or update your generation rules, all from the conversation, each backed by a real, validated write rather than a suggestion.
 
 ---
 

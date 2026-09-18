@@ -38,13 +38,14 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from functools import lru_cache
 from typing import Any, NamedTuple, TypeVar
 
 from resumetailor.core.errors import LLMAuthError, LLMUnavailableError
 from resumetailor.llm.config import LLMProfile
 from resumetailor.llm.errors import LLMEmptyResponseError
+from resumetailor.llm.port import StreamEvent, ToolCall, ToolSpec
 from resumetailor.llm.usage import UsageSink, log_usage, parse_usage
 
 logger = logging.getLogger(__name__)
@@ -127,6 +128,77 @@ def _delta(chunk: Any) -> str | None:
         return None
     content = choices[0].delta.content
     return content if isinstance(content, str) and content else None
+
+
+_ToolCallFragment = tuple[int, str | None, str | None, str | None]
+
+
+def _tool_call_fragments(chunk: Any) -> list[_ToolCallFragment]:
+    """The ``(index, id, name, arguments)`` fragment of a tool-call chunk, if any.
+
+    A tool call is not sent whole: its ``id`` and its function ``name`` arrive
+    once, on the first chunk that mentions that ``index``, and ``arguments``
+    arrives as a JSON string sliced across every chunk after it — the same
+    shape ``delta.content`` uses for plain text, applied to the arguments
+    string instead. The caller accumulates by ``index`` because a model asking
+    for more than one tool in the same turn interleaves their fragments.
+    """
+    choices = getattr(chunk, "choices", None)
+    if not choices:
+        return []
+    tool_calls = getattr(choices[0].delta, "tool_calls", None)
+    if not tool_calls:
+        return []
+    fragments: list[_ToolCallFragment] = []
+    for call in tool_calls:
+        function = getattr(call, "function", None)
+        fragments.append(
+            (
+                getattr(call, "index", 0),
+                getattr(call, "id", None),
+                getattr(function, "name", None) if function is not None else None,
+                getattr(function, "arguments", None) if function is not None else None,
+            )
+        )
+    return fragments
+
+
+def _accumulate_tool_calls(chunk: Any, pending: dict[int, dict[str, str]]) -> None:
+    """Fold one chunk's tool-call fragments into the in-progress calls, by index."""
+    for index, call_id, name, arguments in _tool_call_fragments(chunk):
+        slot = pending.setdefault(index, {"id": "", "name": "", "arguments": ""})
+        if call_id:
+            slot["id"] = call_id
+        if name:
+            slot["name"] += name
+        if arguments:
+            slot["arguments"] += arguments
+
+
+def _finished_tool_calls(pending: dict[int, dict[str, str]]) -> list[ToolCall]:
+    """The accumulated calls, in the order the provider indexed them.
+
+    A slot with no ``name`` was never a real tool call -- nothing in the
+    OpenAI streaming shape produces one, but an empty ``pending`` entry is
+    cheap to guard against and costs nothing to be defensive about.
+    """
+    return [
+        ToolCall(id=slot["id"], name=slot["name"], arguments=slot["arguments"])
+        for index in sorted(pending)
+        if (slot := pending[index])["name"]
+    ]
+
+
+def _tool_schema(tool: ToolSpec) -> dict[str, Any]:
+    """One tool, in the shape every OpenAI-compatible provider expects."""
+    return {
+        "type": "function",
+        "function": {
+            "name": tool.name,
+            "description": tool.description,
+            "parameters": tool.parameters,
+        },
+    }
 
 
 async def _release(response: Any) -> None:
@@ -297,8 +369,22 @@ class LiteLLMAdapter:
             raise LLMEmptyResponseError(msg)
         return content
 
-    async def stream(self, messages: list[dict[str, Any]]) -> AsyncIterator[str]:
+    async def stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: Sequence[ToolSpec] | None = None,
+    ) -> AsyncIterator[StreamEvent]:
         """The same completion, delivered as it is generated.
+
+        ``tools`` puts the model in a position to ask for one or more of them
+        instead of answering in text (task 3.3, closing D-33: task 2.1 built
+        the streaming lifecycle below and deliberately did not wire this
+        parameter). A tool call is not usable until the provider has finished
+        sending it — resuming a partially-parsed JSON argument string is not a
+        thing a caller can act on — so unlike a text delta, which is yielded
+        the moment it arrives, a :class:`ToolCall` is assembled across the
+        whole stream and yielded only once, after the last chunk, in whatever
+        order the provider's own tool-call indices give it.
 
         Raises (from the returned iterator, not from this coroutine — the
         request is not sent until the first chunk is asked for, so that a
@@ -311,21 +397,31 @@ class LiteLLMAdapter:
 
         kwargs = self._kwargs(messages)
         kwargs["stream"] = True
+        if tools:
+            kwargs["tools"] = [_tool_schema(tool) for tool in tools]
         options = _stream_usage_options(self._model)
         if options is not None:
             kwargs["stream_options"] = options
 
-        async def _gen() -> AsyncIterator[str]:
+        async def _gen() -> AsyncIterator[StreamEvent]:
             response = await self._attempt(
                 "stream setup", lambda: litellm.acompletion(**kwargs)
             )
             raw_usage: Any = None
+            # Keyed by the provider's own tool-call index, not call id: the id
+            # arrives on the same chunk as the index, but nothing guarantees
+            # it arrives before a later fragment for that index needs a slot
+            # to land in.
+            pending: dict[int, dict[str, str]] = {}
             try:
                 async for chunk in self._chunks(response):
                     raw_usage = getattr(chunk, "usage", None) or raw_usage
                     delta = _delta(chunk)
                     if delta:
                         yield delta
+                    _accumulate_tool_calls(chunk, pending)
+                for call in _finished_tool_calls(pending):
+                    yield call
             finally:
                 self._report_usage("stream", raw_usage)
                 await _release(response)
