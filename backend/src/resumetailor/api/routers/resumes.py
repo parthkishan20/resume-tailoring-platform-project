@@ -21,6 +21,7 @@ from resumetailor.db.repositories import (
 from resumetailor.db.repositories.resumes import MAX_PAGE_SIZE
 from resumetailor.deps import get_backend
 from resumetailor.core.errors import BackendError
+from resumetailor.core.metrics import sse_stream_tracker
 from resumetailor.core.security import MAX_JOB_DESCRIPTION_CHARS, MAX_RESUME_YAML_CHARS, resolve_within
 from resumetailor.domain.tailoring import Stage, TailoredResume, store_tailored_resume, tailor
 from resumetailor.rendering.errors import RenderIssue
@@ -173,44 +174,52 @@ async def generate_resume_stream(
     The work is `domain.tailoring`; this handler reads what the pipeline needs,
     turns each `Stage` into the progress frame the frontend expects, and hands
     the result to the one function that writes it.
+
+    Wrapped in `sse_stream_tracker.track()` (task 3.5) for the whole of its
+    body: the lifespan's shutdown waits on this counter so a generation in
+    progress is not cut off mid-stream, and the same count backs
+    `resumetailor_sse_streams_active`. See `main.py`'s `lifespan`.
     """
     async def event_gen():
-        try:
-            master = await asyncio.to_thread(get_master_resume, _db_path())
-            if master is None:
-                yield _sse("error", {"error": "No master resume found", "code": "NO_MASTER_RESUME"})
-                return
+        async with sse_stream_tracker.track():
+            try:
+                master = await asyncio.to_thread(get_master_resume, _db_path())
+                if master is None:
+                    yield _sse("error", {"error": "No master resume found", "code": "NO_MASTER_RESUME"})
+                    return
 
-            rules = await asyncio.to_thread(get_rules, _db_path())
+                rules = await asyncio.to_thread(get_rules, _db_path())
 
-            async for event in tailor(
-                api,
-                master_yaml=master.yaml_content,
-                job_description=body.job_description,
-                rules=rules,
-            ):
-                if isinstance(event, TailoredResume):
-                    row = await asyncio.to_thread(
-                        store_tailored_resume,
-                        _db_path(), _pdfs_dir(),
-                        job_description=body.job_description, result=event,
-                    )
-                    yield _sse("done", {"result": row})
-                else:
-                    yield _sse("progress", {"message": _PROGRESS_MESSAGES[event]})
-        # D-53: the client gets `exc.client_message`, never `str(exc)`. See
-        # `_error_frame`. One branch rather than the four this replaces,
-        # because every one of them did the same thing and the only thing that
-        # differed was a code literal that is now read off the exception. A new
-        # domain error, or a subclass of an existing one, reaches the browser
-        # with its own code and without a branch being added here.
-        except BackendError as exc:
-            yield _error_frame(exc)
-        except Exception:
-            # Not a domain error, so there is no vetted sentence to send: the
-            # text of an unexpected exception is exactly what must not travel.
-            logger.exception("sse generation failed", extra={"error_code": "GENERATION_FAILED"})
-            yield _sse("error", {"error": BackendError.client_message, "code": "GENERATION_FAILED"})
+                async for event in tailor(
+                    api,
+                    master_yaml=master.yaml_content,
+                    job_description=body.job_description,
+                    rules=rules,
+                ):
+                    if isinstance(event, TailoredResume):
+                        row = await asyncio.to_thread(
+                            store_tailored_resume,
+                            _db_path(), _pdfs_dir(),
+                            job_description=body.job_description, result=event,
+                        )
+                        yield _sse("done", {"result": row})
+                    else:
+                        yield _sse("progress", {"message": _PROGRESS_MESSAGES[event]})
+            # D-53: the client gets `exc.client_message`, never `str(exc)`. See
+            # `_error_frame`. One branch rather than the four this replaces,
+            # because every one of them did the same thing and the only thing
+            # that differed was a code literal that is now read off the
+            # exception. A new domain error, or a subclass of an existing one,
+            # reaches the browser with its own code and without a branch being
+            # added here.
+            except BackendError as exc:
+                yield _error_frame(exc)
+            except Exception:
+                # Not a domain error, so there is no vetted sentence to send:
+                # the text of an unexpected exception is exactly what must not
+                # travel.
+                logger.exception("sse generation failed", extra={"error_code": "GENERATION_FAILED"})
+                yield _sse("error", {"error": BackendError.client_message, "code": "GENERATION_FAILED"})
 
     return StreamingResponse(event_gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache"})
@@ -311,6 +320,7 @@ async def render_pdf(resume_id: int, api: BackendAPI = Depends(get_backend)):
     responses=error_responses(404, 422),
 )
 async def delete_generated(resume_id: int):
+    """Delete a generated resume and its PDF. 204: both are gone (D-58)."""
     row = await asyncio.to_thread(get_resume, _db_path(), resume_id)
     deleted = await asyncio.to_thread(delete_resume, _db_path(), resume_id)
     if not deleted:

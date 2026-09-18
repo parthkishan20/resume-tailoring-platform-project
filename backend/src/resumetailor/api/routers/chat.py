@@ -15,6 +15,7 @@ from resumetailor.db.models import ChatMessage
 from resumetailor.db.repositories import get_chat_messages, add_chat_message, clear_chat, get_system_prompt
 from resumetailor.deps import get_backend
 from resumetailor.core.errors import BackendError
+from resumetailor.core.metrics import sse_stream_tracker
 from resumetailor.core.security import MAX_CHAT_MESSAGE_CHARS
 
 router = APIRouter()
@@ -77,37 +78,39 @@ async def get_history():
 )
 async def chat_stream(body: ChatRequest, api: BackendAPI = Depends(get_backend)):
     async def event_gen():
-        try:
-            # Persist user message
-            await asyncio.to_thread(add_chat_message, _db_path(), "user", body.message)
+        async with sse_stream_tracker.track():
+            try:
+                # Persist user message
+                await asyncio.to_thread(add_chat_message, _db_path(), "user", body.message)
 
-            # Build messages for LLM. The limit is applied by the query, not by
-            # slicing a full-table fetch afterwards (D-21).
-            history = await asyncio.to_thread(
-                get_chat_messages, _db_path(), limit=LLM_HISTORY_LIMIT
-            )
-            sp_row = await asyncio.to_thread(get_system_prompt, _db_path())
-            system_content = sp_row.content if sp_row else "You are ResumeTailor, an AI assistant."
-            messages = [{"role": "system", "content": system_content}]
-            messages += [{"role": m.role, "content": m.content} for m in history]
+                # Build messages for LLM. The limit is applied by the query,
+                # not by slicing a full-table fetch afterwards (D-21).
+                history = await asyncio.to_thread(
+                    get_chat_messages, _db_path(), limit=LLM_HISTORY_LIMIT
+                )
+                sp_row = await asyncio.to_thread(get_system_prompt, _db_path())
+                system_content = sp_row.content if sp_row else "You are ResumeTailor, an AI assistant."
+                messages = [{"role": "system", "content": system_content}]
+                messages += [{"role": m.role, "content": m.content} for m in history]
 
-            # Stream response
-            full_text = ""
-            async for delta in await api.stream(messages):
-                full_text += delta
-                yield _sse("token", {"delta": delta})
+                # Stream response
+                full_text = ""
+                async for delta in await api.stream(messages):
+                    full_text += delta
+                    yield _sse("token", {"delta": delta})
 
-            # Persist assistant message
-            await asyncio.to_thread(add_chat_message, _db_path(), "assistant", full_text)
+                # Persist assistant message
+                await asyncio.to_thread(add_chat_message, _db_path(), "assistant", full_text)
 
-            yield _sse("done", {"result": {"text": full_text, "action": None}})
-        except BackendError as exc:
-            yield _error_frame(exc)
-        except Exception:
-            # Not a domain error, so there is no vetted sentence to send: the
-            # text of an unexpected exception is exactly what must not travel.
-            logger.exception("sse chat failed", extra={"error_code": "CHAT_FAILED"})
-            yield _sse("error", {"error": BackendError.client_message, "code": "CHAT_FAILED"})
+                yield _sse("done", {"result": {"text": full_text, "action": None}})
+            except BackendError as exc:
+                yield _error_frame(exc)
+            except Exception:
+                # Not a domain error, so there is no vetted sentence to send:
+                # the text of an unexpected exception is exactly what must not
+                # travel.
+                logger.exception("sse chat failed", extra={"error_code": "CHAT_FAILED"})
+                yield _sse("error", {"error": BackendError.client_message, "code": "CHAT_FAILED"})
 
     return StreamingResponse(event_gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache"})
@@ -115,4 +118,5 @@ async def chat_stream(body: ChatRequest, api: BackendAPI = Depends(get_backend))
 
 @router.delete("/api/chat", status_code=204)
 async def clear_history():
+    """Delete every chat message. 204: nothing is left to describe (D-58)."""
     await asyncio.to_thread(clear_chat, _db_path())

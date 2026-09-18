@@ -46,4 +46,9 @@ async def update(body: SystemPromptBody):
 
 @router.delete("/api/system-prompt", response_model=SystemPrompt)
 async def reset():
+    """Reset to the default system prompt. 200 with the new state (D-58).
+
+    Same convention as `rules.py::reset`: this row still exists after the
+    call, with a new value, so the response is 200 and the body, not 204.
+    """
     return await asyncio.to_thread(reset_system_prompt, _db_path())

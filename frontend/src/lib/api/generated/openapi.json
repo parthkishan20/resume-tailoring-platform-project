@@ -111,6 +111,29 @@
         "title": "ChatResult",
         "type": "object"
       },
+      "CheckResult": {
+        "description": "One dependency's readiness check.",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": ["ok"],
+        "title": "CheckResult",
+        "type": "object"
+      },
       "ErrorCode": {
         "description": "Every `code` this API can send, on an HTTP error body or in an SSE `event: error` frame. Compare against it; do not assume it is exhaustive at runtime, since a server newer than the client can send one that is not listed here.",
         "enum": [
@@ -375,6 +398,26 @@
         },
         "required": ["yaml_content"],
         "title": "MasterResumeBody",
+        "type": "object"
+      },
+      "ReadinessResponse": {
+        "description": "Whether this process can currently serve a real request.\n\n`checks` is always both keys, whether or not they passed, so a caller can\ntell \"the database check failed\" from \"the database check never ran.\"",
+        "properties": {
+          "checks": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CheckResult"
+            },
+            "title": "Checks",
+            "type": "object"
+          },
+          "status": {
+            "enum": ["ok", "unavailable"],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": ["status", "checks"],
+        "title": "ReadinessResponse",
         "type": "object"
       },
       "RequestValidationDetail": {
@@ -654,6 +697,7 @@
   "paths": {
     "/api/chat": {
       "delete": {
+        "description": "Delete every chat message. 204: nothing is left to describe (D-58).",
         "operationId": "clear_history_api_chat_delete",
         "responses": {
           "204": {
@@ -890,6 +934,7 @@
     },
     "/api/health": {
       "get": {
+        "description": "The process is up and can answer HTTP. Touches nothing else.\n\nDeliberately does not check the database: an orchestrator that restarts a\nprocess on a *liveness* failure is trying to recover from a stuck or\ndeadlocked process, and a database outage is not that \u2014 restarting this\nprocess fixes nothing and produces a restart loop instead. See\n`/api/health/ready` for the check that does look at dependencies.",
         "operationId": "health_api_health_get",
         "responses": {
           "200": {
@@ -906,8 +951,38 @@
         "summary": "Health"
       }
     },
+    "/api/health/ready": {
+      "get": {
+        "description": "Can this process serve a real request right now.\n\nChecks the database (a real query, not \"is the file present\" \u2014 D-58's\nmotivating case is a *corrupt* database, which opens fine and fails on the\nfirst statement) and `PDFS_DIR` (present and writable, since every\ngeneration ends in a write there). Both run inline rather than through\n`asyncio.to_thread`: each is a handful of milliseconds and a readiness\nprobe that itself spawns a thread per poll is not simpler than one that\nblocks the loop for a few milliseconds every few seconds.",
+        "operationId": "ready_api_health_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            },
+            "description": "At least one dependency check failed. Same body shape as the 200, with the failing entries' `ok` false."
+          }
+        },
+        "summary": "Ready"
+      }
+    },
     "/api/master-resume": {
       "delete": {
+        "description": "Delete the master resume. 204: the row is gone, not reset (D-58).",
         "operationId": "remove_resume_api_master_resume_delete",
         "responses": {
           "204": {
@@ -1348,7 +1423,7 @@
     },
     "/api/resumes/stream": {
       "post": {
-        "description": "Run the tailoring pipeline, narrating it as server-sent events.\n\nThe work is `domain.tailoring`; this handler reads what the pipeline needs,\nturns each `Stage` into the progress frame the frontend expects, and hands\nthe result to the one function that writes it.",
+        "description": "Run the tailoring pipeline, narrating it as server-sent events.\n\nThe work is `domain.tailoring`; this handler reads what the pipeline needs,\nturns each `Stage` into the progress frame the frontend expects, and hands\nthe result to the one function that writes it.\n\nWrapped in `sse_stream_tracker.track()` (task 3.5) for the whole of its\nbody: the lifespan's shutdown waits on this counter so a generation in\nprogress is not cut off mid-stream, and the same count backs\n`resumetailor_sse_streams_active`. See `main.py`'s `lifespan`.",
         "operationId": "generate_resume_stream_api_resumes_stream_post",
         "requestBody": {
           "content": {
@@ -1451,6 +1526,7 @@
     },
     "/api/resumes/{resume_id}": {
       "delete": {
+        "description": "Delete a generated resume and its PDF. 204: both are gone (D-58).",
         "operationId": "delete_generated_api_resumes__resume_id__delete",
         "parameters": [
           {
@@ -1849,6 +1925,7 @@
     },
     "/api/rules": {
       "delete": {
+        "description": "Reset to the default rules. 200 with the new state, not 204 (D-58).\n\nThis is a reset, not a delete: `generation_rules` still exists and is\nnon-empty afterwards, so returning 204 would say \"gone\" about a resource\nthat immediately has a new value the caller has to re-fetch to see. See\n`system_prompt.py::reset` (the other one) and\n`docs/adr/0007-delete-verb-status-code-convention.md`.",
         "operationId": "reset_api_rules_delete",
         "responses": {
           "200": {
@@ -1963,6 +2040,7 @@
     },
     "/api/system-prompt": {
       "delete": {
+        "description": "Reset to the default system prompt. 200 with the new state (D-58).\n\nSame convention as `rules.py::reset`: this row still exists after the\ncall, with a new value, so the response is 200 and the body, not 204.",
         "operationId": "reset_api_system_prompt_delete",
         "responses": {
           "200": {

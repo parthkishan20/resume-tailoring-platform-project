@@ -58,6 +58,7 @@ async def save_resume(body: MasterResumeBody):
 
 @router.delete("/api/master-resume", status_code=204, responses=error_responses(404))
 async def remove_resume():
+    """Delete the master resume. 204: the row is gone, not reset (D-58)."""
     deleted = await asyncio.to_thread(delete_master_resume, _db_path())
     if not deleted:
         raise HTTPException(status_code=404, detail="No master resume to delete")
