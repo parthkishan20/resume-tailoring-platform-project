@@ -29,8 +29,15 @@ services:
     # generated resume, PDF, or chat row survives into the next run and no
     # spec can pass on residue.
     tmpfs:
-      - /app/db
-      - /app/pdfs
+      # D-73: a bare `tmpfs: - /path` entry does not reliably get the kernel's
+      # default tmpfs mode (1777) from this Compose/Docker combination -- it
+      # was observed mounting root:root 0755, which the non-root uid 10001
+      # app user cannot write into, so `migrate()` fails to open the database
+      # before any spec can run. `/app/db` and `/app/pdfs` are explicit about
+      # ownership and mode rather than relying on the kernel default the way
+      # `/tmp` below still does.
+      - /app/db:uid=10001,gid=10001,mode=1770
+      - /app/pdfs:uid=10001,gid=10001,mode=1770
       # D-50: the render scratch, same as the dev stack. A tmpfs mount is
       # created mode 1777 (the kernel's default for tmpfs with no `mode=`
       # option), so it stays writable now that the image runs as uid 10001 and
