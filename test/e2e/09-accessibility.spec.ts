@@ -4,12 +4,13 @@
 // critical [violations]." (D-44.) Scans every distinct surface the app has
 // at both themes it ships, then a set of `test.fail()`-pinned tests: two
 // interaction tests for D-76 and D-77 (neither is something a static axe
-// ruleset can see at all), and three axe-scoped tests for defects found
-// live while building this suite — D-87, D-88, and the already-recorded
-// `--lp-ink-tertiary` AA gap — kept out of the general scans above (via
-// KNOWN_EXCLUSIONS) so they don't mask an unrelated regression on every
-// page that happens to share the same editor or caption style. See
-// docs/reports/4-4.2.md for the full evidence behind each.
+// ruleset can see at all), and axe-scoped tests for defects found live
+// while building this suite — D-88 and the already-recorded
+// `--lp-ink-tertiary` AA gap are still pinned; D-87 (below) is fixed and its
+// test is a real regression guard now, not a pin — kept out of the general
+// scans above (via KNOWN_EXCLUSIONS) so they don't mask an unrelated
+// regression on every page that happens to share the same editor or caption
+// style. See docs/reports/4-4.2.md for the full evidence behind each.
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "fs";
 import { join } from "path";
@@ -31,10 +32,11 @@ const SAMPLE_YAML = readFileSync(join(__dirname, "../fixtures/sample-resume.yaml
 //   - `[data-testid=yaml-editor]` / `[data-testid=resume-yaml-editor]`: the
 //     YAML editor is mounted (even off-screen, behind a settings dialog's
 //     overlay — the document region never unmounts) on nearly every
-//     surface, and carries two of its own real defects (D-87, D-88). The
-//     testid wrapper is used rather than `.cm-editor` alone because
-//     CodeMirror's own theme wrapper (`.cm-theme-light`, D-88's
-//     aria-prohibited-attr finding) sits *outside* `.cm-editor`, as a parent.
+//     surface, and carries D-88 (D-87, the dark-mode background bug, is
+//     fixed — see its own test below). The testid wrapper is used rather
+//     than `.cm-editor` alone because CodeMirror's own theme wrapper
+//     (`.cm-theme-light`, D-88's aria-prohibited-attr finding) sits
+//     *outside* `.cm-editor`, as a parent.
 //   - `[data-testid=resume-list-item]`: a Library row (D-76's own
 //     `ResumeListRow`) renders `role="button"` while nesting two real
 //     `<button>` elements (rename, delete) inside it — axe's
@@ -370,25 +372,14 @@ test.describe("CodeMirror editor: dark-mode contrast (D-87)", () => {
   });
 
   test("the editor's background follows the dark theme", async ({ page }) => {
-    test.fail(
-      true,
-      "D-87: the YAML editor's `--lp-paper-raised` custom property correctly resolves to " +
-        "the dark value (#1e1e23) even when read directly on `.cm-editor` in dark mode " +
-        "(confirmed via getComputedStyle), but `.cm-editor`'s actual painted " +
-        "background-color stays rgb(255, 255, 255) regardless — the theme's own " +
-        "EditorView.theme() background rule is not winning, while the syntax-highlight " +
-        "foreground colors on the same element (features/document/editorTheme.ts's " +
-        "`highlight` HighlightStyle) correctly do switch to their dark-mode values. The " +
-        "combination (dark-appropriate near-white/accent text on a background stuck light) " +
-        "is far worse than a borderline miss: axe measured ~45-95 serious color-contrast " +
-        "violations on this one element tree per page, every time, in every dark-mode " +
-        "surface that mounts the editor. `.cm-editor` carries multiple CodeMirror-generated " +
-        "theme hash classes at once (confirmed: ͼ1, ͼ3, ͼ4, plus two more), consistent with " +
-        "a stale or duplicate theme compartment from @uiw/react-codemirror's reconfigure on " +
-        "theme change, though this was not diagnosed further — not qa-e2e's file. Remove " +
-        "test.fail() once frontend-shell/design-system fixes it.",
-    );
-
+    // D-87, fixed: `YamlEditor.tsx` never set `@uiw/react-codemirror`'s own
+    // `theme` prop, which defaults to `"light"` -- the library's bundled
+    // light preset (a real background-color rule) stayed permanently active
+    // underneath the CSS-variable-driven theme in `extensions`, which *did*
+    // follow `data-theme` correctly (that is why only the background was
+    // wrong: the extensions-based foreground colors were never fighting the
+    // library's own theme). `theme="none"` opts out of the library's own
+    // theme entirely.
     await setTheme(page, "dark");
     await page.goto("/");
     await expect(page.locator("[data-testid=yaml-editor]")).toBeVisible();

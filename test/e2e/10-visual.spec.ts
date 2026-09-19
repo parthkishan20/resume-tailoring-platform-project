@@ -75,11 +75,13 @@ test.describe("Visual: master document", () => {
     await page.goto("/");
     await page.locator("[data-testid=mode-editor]").click();
     await expect(page.locator("[data-testid=yaml-editor]")).toBeVisible();
-    // Not asserted clean: this baseline documents D-87 (the editor's
-    // background does not follow dark mode) exactly as it renders today.
-    // Once D-87 is fixed, this baseline necessarily changes — reviewing
-    // that diff is part of how a fix for D-87 gets confirmed visually, not
-    // a regression `--update-snapshots` should paper over without looking.
+    // D-87 is fixed (YamlEditor.tsx now passes theme="none" to CodeMirror,
+    // so the library's own bundled light theme no longer sits underneath
+    // the token-driven one). The pre-fix baseline here documented the bug
+    // itself (a white editor background in dark mode) and has been deleted
+    // rather than kept as a now-wrong "known good" image; this assertion
+    // will write a fresh baseline reflecting the fix the next time it runs
+    // against a real browser, which is what confirms the fix visually.
     await expect(page).toHaveScreenshot("master-document-editor-dark.png", { fullPage: true });
   });
 

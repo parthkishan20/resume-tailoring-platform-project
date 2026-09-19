@@ -39,6 +39,16 @@ export function YamlEditor({ value, onChange, label }: YamlEditorProps) {
       height="100%"
       style={{ height: "100%" }}
       extensions={extensions}
+      // D-87: `@uiw/react-codemirror` defaults its own `theme` prop to
+      // `"light"` -- its bundled light preset, a real EditorView.theme()
+      // extension with a hardcoded white background -- and applies it
+      // regardless of `extensions`. Since we never passed `theme`, that
+      // default stayed active permanently, underneath the CSS-variable-driven
+      // theme in `extensions` that *does* follow `data-theme` correctly.
+      // "none" tells the library to skip its own theme entirely: this
+      // component's whole point is one token-driven theme object serving
+      // both modes, not the library's own light/dark swap.
+      theme="none"
       basicSetup={{ lineNumbers: true, foldGutter: false }}
       aria-label={label}
     />
