@@ -261,9 +261,7 @@ describe("the assistant/draft race, which is D-86", () => {
     fireEvent.click(screen.getByTestId("chat-send"));
 
     expect(await screen.findByText("Your open draft is now out of date")).toBeInTheDocument();
-    expect(
-      screen.getByText(/saving your draft will overwrite that change/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/saving your draft will overwrite that change/i)).toBeInTheDocument();
   });
 
   test("does not warn when there is no conflicting local draft open", async () => {
