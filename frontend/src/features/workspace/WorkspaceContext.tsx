@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useToast } from "@/design-system";
 import { useMasterResume, useSaveMasterResume } from "@/features/queries";
 import type { GeneratedResume } from "@/lib/types";
 
@@ -74,6 +75,17 @@ export interface WorkspaceState {
   saveMasterDraft: () => Promise<void>;
   masterSaving: boolean;
   masterSaveError: string | null;
+
+  /**
+   * D-86: the assistant edits the master resume server-side through the same
+   * chat tool a user can watch run. When that happens while a local draft is
+   * open and dirty, the server-adoption guard above (by design, for P1-7) keeps
+   * showing the draft: the editor looks untouched and a later save would
+   * silently clobber the assistant's edit. `Chat.tsx` calls this the moment it
+   * sees a `master_resume_updated` action so the conflict is visible instead of
+   * silent; it is a no-op when there is no conflicting draft.
+   */
+  notifyAssistantMasterEdit: () => void;
 }
 
 const WorkspaceContext = React.createContext<WorkspaceState | null>(null);
@@ -153,6 +165,18 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const masterSaveError = saveMaster.isError ? saveMaster.error.message : null;
 
+  const { toast } = useToast();
+
+  const notifyAssistantMasterEdit = React.useCallback(() => {
+    if (!masterDirty) return;
+    toast({
+      title: "Your open draft is now out of date",
+      description:
+        "The assistant just updated your master resume. Saving your draft will overwrite that change; discard the draft to see what the assistant wrote instead.",
+      tone: "critical",
+    });
+  }, [masterDirty, toast]);
+
   const value = React.useMemo<WorkspaceState>(
     () => ({
       destination,
@@ -171,6 +195,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       saveMasterDraft,
       masterSaving: saveMaster.isPending,
       masterSaveError,
+      notifyAssistantMasterEdit,
     }),
     [
       destination,
@@ -186,6 +211,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       saveMasterDraft,
       saveMaster.isPending,
       masterSaveError,
+      notifyAssistantMasterEdit,
     ],
   );
 
