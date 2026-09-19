@@ -1,8 +1,18 @@
 # backend/src/resumetailor/api/routers/health.py
-"""Liveness and readiness (PLAN.md D-58). See `api/schemas/health.py`."""
+"""Liveness and readiness (PLAN.md D-58). See `api/schemas/health.py`.
+
+**D-79.** `_check_database` and `_check_pdfs_dir` used to put `str(exc)` and an
+absolute filesystem path straight into `CheckResult.detail`, reaching any
+unauthenticated caller of `/api/health/ready`. Same disclosure category D-53
+closed everywhere else: the client now gets a fixed, check-specific message,
+and the real detail is logged server-side at ERROR with the request id
+`core/logging.py` attaches, the same split `core/errors.py` uses for
+`BackendError.client_message` versus `.detail`.
+"""
 
 from __future__ import annotations
 
+import logging
 import os
 import sqlite3
 from pathlib import Path
@@ -18,7 +28,12 @@ from resumetailor.api.schemas.health import (
 from resumetailor.core.config import get_settings
 from resumetailor.db.engine import session
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+_DATABASE_CHECK_FAILED = "The database check failed."
+_PDFS_DIR_CHECK_FAILED = "The PDFs directory check failed."
 
 
 @router.get("/api/health", response_model=HealthResponse)
@@ -39,16 +54,28 @@ def _check_database(db_path: str) -> CheckResult:
         with session(db_path) as conn:
             conn.execute("SELECT 1").fetchone()
     except sqlite3.Error as exc:
-        return CheckResult(ok=False, detail=str(exc))
+        logger.exception(
+            "readiness check failed: database",
+            extra={"check": "database", "error_detail": str(exc)},
+        )
+        return CheckResult(ok=False, detail=_DATABASE_CHECK_FAILED)
     return CheckResult(ok=True)
 
 
 def _check_pdfs_dir(pdfs_dir: str) -> CheckResult:
     directory = Path(pdfs_dir)
     if not directory.is_dir():
-        return CheckResult(ok=False, detail=f"{directory} does not exist")
+        logger.error(
+            "readiness check failed: pdfs_dir",
+            extra={"check": "pdfs_dir", "error_detail": f"{directory} does not exist"},
+        )
+        return CheckResult(ok=False, detail=_PDFS_DIR_CHECK_FAILED)
     if not os.access(directory, os.W_OK):
-        return CheckResult(ok=False, detail=f"{directory} is not writable")
+        logger.error(
+            "readiness check failed: pdfs_dir",
+            extra={"check": "pdfs_dir", "error_detail": f"{directory} is not writable"},
+        )
+        return CheckResult(ok=False, detail=_PDFS_DIR_CHECK_FAILED)
     return CheckResult(ok=True)
 
 

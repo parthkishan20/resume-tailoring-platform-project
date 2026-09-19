@@ -33,10 +33,10 @@ class CheckResult(BaseModel):
     """One dependency's readiness check."""
 
     ok: bool
-    #: Present only when `ok` is false. Operator-facing, like `BackendError`'s
-    #: `.detail`: short enough to log inline, never sensitive, since it is
-    #: about a filesystem path or a SQLite error, not a request the process is
-    #: handling.
+    #: Present only when `ok` is false. Client-safe, like `BackendError`'s
+    #: `client_message`: a fixed, check-specific sentence, never the raw
+    #: exception text or a filesystem path (D-79). The operator-facing detail
+    #: is logged instead, with the request id, by the check function.
     detail: str | None = None
 
 
