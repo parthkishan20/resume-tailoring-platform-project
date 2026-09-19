@@ -62,6 +62,16 @@ export default defineConfig({
     video: "retain-on-failure",
     trace: "on-first-retry",
   },
+  // Visual regression baselines (10-visual.spec.ts, task 4.2/D-44). A small
+  // tolerance absorbs font anti-aliasing jitter between runs on the same
+  // machine; it is not generous enough to hide a real layout change.
+  // Baselines are platform- and browser-build-specific (Playwright's own
+  // documented limitation), generated here against chromium 125 (build
+  // v1117, pinned by @playwright/test 1.44.0) on darwin-arm64 — see
+  // docs/reports/4-4.2.md for what that means for CI.
+  expect: {
+    toHaveScreenshot: { maxDiffPixelRatio: 0.02, animations: "disabled" },
+  },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
   ],

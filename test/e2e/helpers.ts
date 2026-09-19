@@ -4,6 +4,8 @@
 // no spec may assume residue left by another spec or by a previous run.
 // These helpers are the one place that state-reset logic lives, since eight
 // specs otherwise repeat the same four API calls.
+import AxeBuilder from "@axe-core/playwright";
+import type { Result } from "axe-core";
 import type { APIRequestContext, Page } from "@playwright/test";
 
 export async function resetMasterResume(request: APIRequestContext): Promise<void> {
@@ -172,4 +174,59 @@ export async function clickGenerate(page: Page): Promise<void> {
 export async function clickEvaluate(page: Page): Promise<void> {
   await page.locator("[data-testid=evaluate-button]").click();
   await retryOnRateLimit(page, "evaluate-retry");
+}
+
+/**
+ * Forces `next-themes`' persisted choice before the app's first paint, so an
+ * a11y/visual spec can render dark mode directly instead of clicking through
+ * the Appearance dialog (08-settings.spec.ts's own path) on every test.
+ * `next-themes` is wired with `attribute="data-theme"` and no `storageKey`
+ * (`frontend/src/app/providers.tsx`), so it persists under the library's
+ * unprefixed default key, `theme`. Must be called before `page.goto`.
+ */
+export async function setTheme(page: Page, theme: "light" | "dark"): Promise<void> {
+  await page.addInitScript((value) => {
+    window.localStorage.setItem("theme", value);
+  }, theme);
+}
+
+/**
+ * Runs an axe scan and returns only the violations AGENTS.md §8's gate
+ * actually cares about ("zero serious or critical"). `moderate`/`minor`
+ * findings are real but out of the release gate's scope, so they are left
+ * out of what fails a test rather than silently dropped: a caller that wants
+ * them can still read `results.violations` directly.
+ *
+ * `exclude`/`include` are CSS selectors passed straight to axe-core's own
+ * scan scoping. 09-accessibility.spec.ts's per-surface scans exclude a
+ * handful of known, already-registered gaps (the YAML editor's D-87/D-88,
+ * a Library row's D-76 nested-interactive finding, and others — see that
+ * file's `KNOWN_EXCLUSIONS`) that would otherwise fail nearly every scan in
+ * the suite for the same already-known reasons and mask an unrelated
+ * regression. Each excluded thing gets its own dedicated, precisely-scoped,
+ * currently-failing test instead of being silently dropped from coverage.
+ */
+export async function scanForBlockingViolations(
+  page: Page,
+  options?: { exclude?: string[]; include?: string[] },
+): Promise<Result[]> {
+  let builder = new AxeBuilder({ page });
+  // Each entry is its own independent selector, not a shadow-DOM/iframe
+  // selector *chain* — axe-core reads a single flat array passed to one
+  // `.exclude()`/`.include()` call as one chain (nested lookup), so two or
+  // more independent selectors need one call each.
+  if (options?.include) for (const selector of options.include) builder = builder.include(selector);
+  if (options?.exclude) for (const selector of options.exclude) builder = builder.exclude(selector);
+  const results = await builder.analyze();
+  return results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+}
+
+/** Formats axe violations into a readable failure message (rule, impact, every matched node). */
+export function describeViolations(violations: Result[]): string {
+  return violations
+    .map((violation) => {
+      const nodes = violation.nodes.map((node) => `    ${node.target.join(" ")}`).join("\n");
+      return `${violation.id} (${violation.impact}): ${violation.help}\n${nodes}`;
+    })
+    .join("\n\n");
 }
