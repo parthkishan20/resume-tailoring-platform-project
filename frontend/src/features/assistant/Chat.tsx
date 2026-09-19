@@ -5,6 +5,7 @@ import { PaperPlaneTilt } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button, EmptyState, ErrorState, Skeleton, Textarea, cn } from "@/design-system";
 import { queryKeys, useChatHistory } from "@/features/queries";
+import { useWorkspace } from "@/features/workspace/WorkspaceContext";
 import { streamChat, type ChatAction } from "@/lib/api";
 import type { ChatMessage } from "@/lib/types";
 
@@ -58,6 +59,7 @@ type LiveMessage = ChatMessage & { streaming?: boolean };
 export function Chat() {
   const queryClient = useQueryClient();
   const history = useChatHistory();
+  const { notifyAssistantMasterEdit } = useWorkspace();
 
   const [windowSize, setWindowSize] = React.useState(PAGE_SIZE);
   const [live, setLive] = React.useState<LiveMessage[]>([]);
@@ -123,6 +125,12 @@ export function Chat() {
           const { action } = frame.data.result;
           if (action) {
             setLastAction(action);
+            // D-86: check before invalidating, since a local draft's dirtiness
+            // is judged against the master resume this chat turn just changed
+            // server-side, not against whatever the refetch below lands on.
+            if (action.type === "master_resume_updated") {
+              notifyAssistantMasterEdit();
+            }
             void queryClient.invalidateQueries({ queryKey: queryKeys.masterResume });
             if (action.resume_id !== null) {
               void queryClient.invalidateQueries({ queryKey: queryKeys.resumes.all });
