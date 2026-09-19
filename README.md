@@ -1,48 +1,64 @@
 # ResumeTailor
 
-An AI-powered resume workstation. Keep one **master resume** in YAML and let the AI generate job-specific tailored versions, evaluate your fit against any job description, and chat with an assistant to refine your content — all in a single-page app backed by a single Docker container.
+An AI-powered resume workstation. Keep one **master resume** in YAML, tailor it to any job description, evaluate your fit, and edit it by chat with an assistant that can actually act on your workspace, not just suggest changes.
 
 ---
 
 ## Screenshots
 
-| Welcome | YAML Editor |
-|---|---|
-| ![Welcome screen](docs/screenshots/01-empty-state.png) | ![YAML editor with syntax highlighting](docs/screenshots/02-workstation-editor.png) |
+Both themes are first-class (light is the default, dark is a full token swap), so a few surfaces are shown in both.
 
-| PDF Preview | Generate with Job Description |
+| Onboarding (light) | Onboarding (dark) |
 |---|---|
-| ![Live PDF preview rendered by rendercv](docs/screenshots/03-master-resume-preview.png) | ![Generate tailored resume from JD](docs/screenshots/04-generate-tab.png) |
+| ![Onboarding: import a PDF, start from a sample, or write YAML from scratch](docs/screenshots/onboarding-empty-state-light.png) | ![The same onboarding screen in dark mode](docs/screenshots/onboarding-empty-state-dark.png) |
 
-| Generation Rules | Resumes Library |
+| Master document, Editor mode (light) | Master document, Editor mode (dark) |
 |---|---|
-| ![Configurable generation rules](docs/screenshots/05-generation-rules.png) | ![Generated resumes list](docs/screenshots/06-resumes-tab.png) |
+| ![The master resume's YAML editor, light theme](docs/screenshots/master-document-editor-light.png) | ![The master resume's YAML editor, dark theme](docs/screenshots/master-document-editor-dark.png) |
 
-| ATS Evaluation | AI Chat Assistant |
+| Tailor | Evaluate |
 |---|---|
-| ![ATS keyword match evaluation](docs/screenshots/07-evaluate-tab.png) | ![AI chat assistant panel](docs/screenshots/08-chat-assistant.png) |
+| ![The Tailor inspector tab with a job description pasted, ready to generate](docs/screenshots/tailor-job-description-dark.png) | ![An evaluation result: match score, critique, and matched/missing keyword chips](docs/screenshots/evaluate-result-dark.png) |
+
+| Library, a generated resume open | Library, a generated resume open (light) |
+|---|---|
+| ![A tailored resume open in the Library, with the Evaluate tab ready against it](docs/screenshots/tailor-result-dark.png) | ![The same surface in light mode](docs/screenshots/library-document-light.png) |
+
+| Assistant, a completed tool call | Settings: generation rules |
+|---|---|
+| ![The assistant confirming it generated a tailored resume, with the new entry visible in the Library](docs/screenshots/assistant-chat-action-dark.png) | ![The generation rules dialog: per-section limits applied to every tailored resume](docs/screenshots/settings-generation-rules-dark.png) |
+
+| Settings: appearance |
+|---|
+| ![The appearance dialog: light, dark, or system](docs/screenshots/settings-appearance-dark.png) |
 
 ---
 
 ## Features
 
-**Master Resume Editor**
-Write your complete career history once in [rendercv](https://rendercv.com) YAML format with full syntax highlighting. Preview the rendered PDF inline at any time. Import an existing PDF resume and the AI automatically converts it to YAML.
+**The workspace**
+Three zones: a navigation rail (Master, Library, and settings), a center document region, and a right-hand inspector. Whatever document is open, master or generated, uses the same Editor / Split / Preview control, so a generated resume gets exactly the same editing surface as the master.
 
-**Tailored Resume Generation**
-Paste a job description and the AI selects and rewrites the most relevant sections from your master resume. Generation streams in real time via SSE. The result is immediately rendered to a downloadable PDF.
+**Master resume**
+Write your complete career history once in [rendercv](https://rendercv.com) YAML, with full syntax highlighting in both themes. The live PDF preview renders alongside the editor. Import an existing PDF and the AI converts it to YAML for you. Edits autosave a local draft and warn before you navigate away with unsaved changes.
 
-**Generation Rules**
-Fine-tune generation behavior with numeric rules (max bullets per section, max chars per entry, etc.) without touching prompts. Rules persist across sessions.
+**Tailor**
+Paste a job description once, in the inspector, shared with Evaluate so you never retype it. Generation streams through three named stages and opens the result as a new document in the center, in the Library, automatically.
 
-**ATS Evaluation**
-Paste any job description to get an ATS keyword match score, a list of matched and missing keywords, and a plain-English critique of your resume's fit.
+**Evaluate**
+Score whatever document is currently open, the master's live draft or a generated resume, against the pasted job description: a match score, a plain-English critique, and matched and missing keyword chips.
 
-**Resumes Library**
-Every generated resume is saved and sortable by date or job description keyword. Click any to view or re-download the PDF.
+**Library**
+Every generated resume, sortable by date or job description and paged past the first screenful. Open one to rename it, edit its YAML directly, re-render its PDF independently of saving, evaluate it, or delete it.
 
-**AI Chat Assistant**
-A context-aware chat panel at the bottom of the workstation. Ask it to rewrite a section, add a bullet, or restructure the YAML and it edits your master resume directly. It can also generate a tailored resume for a job description, evaluate a resume against one, or update your generation rules, all from the conversation, each backed by a real, validated write rather than a suggestion.
+**Generation rules**
+Per-section numeric limits (max bullets, max characters, max entries) applied to every tailoring run, editable from a settings dialog, no prompt-editing required.
+
+**Assistant**
+A real chat surface, docked in the inspector so you can watch your document change as it works. It can edit your master resume, generate a tailored resume for a job description, evaluate a resume against one, or update your generation rules, each backed by the same validated write path the rest of the app uses, not a suggestion you have to apply yourself.
+
+**Appearance**
+Light, dark, or system, set from a settings dialog and applied instantly across every surface, including the YAML editor.
 
 ---
 
@@ -50,11 +66,11 @@ A context-aware chat panel at the bottom of the workstation. Ask it to rewrite a
 
 | Layer | Technology |
 |---|---|
-| Frontend | Next.js 14 (static export), React 18, TypeScript, Tailwind CSS, CodeMirror 6 |
+| Frontend | Next.js 14 (static export), React 18, TypeScript, Tailwind CSS v4, CodeMirror 6, Radix primitives, TanStack Query |
 | Backend | Python, FastAPI, uvicorn, LiteLLM (OpenAI-compatible) |
-| PDF rendering | [rendercv](https://rendercv.com) via Typst — no LaTeX required |
-| Database | SQLite |
-| Deployment | Single Docker container (frontend static files served by FastAPI) |
+| PDF rendering | [rendercv](https://rendercv.com) via Typst, no LaTeX required |
+| Database | SQLite, with numbered migrations and a `schema_version` table |
+| Deployment | Single Docker container (frontend static export served by FastAPI), non-root, `tini` as PID 1 |
 
 ---
 
@@ -74,23 +90,23 @@ docker compose up --build
 open http://localhost:8000
 ```
 
-That's it — one container serves the full app.
+That's it, one container serves the full app. The published port is loopback-only (`127.0.0.1:8000`) by default; see [Configuration](#configuration) before exposing it any further.
 
 ---
 
 ## Development Setup
 
-Run frontend and backend separately for hot reload:
+Two ways to run the app locally without Docker for hot reload.
 
-**Backend**
+**Backend and frontend as separate processes**
+
 ```bash
 cd backend
 uv sync
-PYTHONPATH=src LLM_MOCK=true DB_PATH=/tmp/resumedb.db PDFS_DIR=/tmp/pdfs \
+LLM_MOCK=true DB_PATH=/tmp/resumedb.db PDFS_DIR=/tmp/pdfs \
   uv run uvicorn resumetailor.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-**Frontend**
 ```bash
 cd frontend
 npm install
@@ -99,14 +115,41 @@ cp -r out ../backend/static
 # then access via http://localhost:8000
 ```
 
-> The frontend is a static export — API calls go to relative `/api/*` paths. In development, build the frontend and copy it into `backend/static/` so FastAPI serves both.
+> The frontend is a static export, API calls go to relative `/api/*` paths. In development, build the frontend and copy it into `backend/static/` so FastAPI serves both. `backend` is a real installed package (`pip install`-able, `[build-system]` declared), so no `PYTHONPATH` juggling is needed either way.
+
+**Or, one container with hot reload**
+
+```bash
+make dev-hot     # docker compose --profile dev up --build dev
+```
+
+Bind-mounts `backend/src` read-only into the image and runs uvicorn with `--reload`, so an edit on the host is picked up without a rebuild. `make dev` runs the plain production-shaped image instead (`docker compose up --build`).
+
+**Quality gates**
+
+```bash
+make check       # everything CI runs: lint, format check, typecheck, tests, for both languages
+```
+
+Nothing in `make check` needs Docker, a network call to an LLM, or an API key. See `make help` for the full target list, including the individual `lint` / `fmt` / `typecheck` / `test` steps.
+
+**Data**
+
+```bash
+make backup                          # back up the database and PDFs
+make restore ARGS="backups/<ts>"     # restore a backup
+make migrate                         # apply pending database migrations
+```
+
+Each wraps a script under `scripts/`; pass `ARGS="--docker"` to target the running compose service instead of a local path. See `docs/DEPLOYMENT.md` for the full procedure.
 
 **Tests**
+
 ```bash
 # Backend unit tests
 cd backend && uv run pytest
 
-# End-to-end tests — builds and runs an isolated stack, then tears it down
+# End-to-end tests, builds and runs an isolated stack, then tears it down
 ./scripts/run_e2e.sh          # Windows: .\scripts\run_e2e.ps1
 ```
 
@@ -121,15 +164,11 @@ never be pointed at your own app.
 |---|---|---|
 | Compose project | `resume-tailoring-platform` | `resumetailor-e2e` |
 | Image tag | `resumetailor` | `resumetailor-e2e` |
-| Host port | 8000 | 18173 (`E2E_HOST_PORT` to change; 8000 is rejected) |
+| Host port | 8000 (loopback only) | 18173 (`E2E_HOST_PORT` to change; 8000 is rejected) |
 | Storage | persistent volumes `resumedb-data`, `resumepdf-data` | tmpfs, discarded with the container |
 | LLM | your real `OPENAI_API_KEY` from `.env` | `LLM_MOCK=true`, no `.env` |
 
 Both stacks can run at the same time; they do not collide.
-
-If you ran the e2e suite before this change, two stale named volumes may still
-be on disk. Nothing references them any more; remove them with
-`docker volume rm resume-tailoring-platform_test-db resume-tailoring-platform_test-pdfs`.
 
 To run the specs from your host against an already-running test stack, set
 `BASE_URL` yourself:
@@ -141,7 +180,7 @@ docker compose -f docker-compose.test.yml down -v
 ```
 
 `BASE_URL` has no default. `test/playwright.config.ts` fails immediately if it is
-unset, and refuses a loopback address on port 8000 — that is the dev stack.
+unset, and refuses a loopback address on port 8000, that is the dev stack.
 
 If you need the dev app on a different port, `PORT=9000 ./scripts/start_mac.sh`
 (or `$env:PORT = "9000"` on Windows).
@@ -150,44 +189,68 @@ If you need the dev app on a different port, `PORT=9000 ./scripts/start_mac.sh`
 
 ## Configuration
 
-Copy `.env.example` to `.env` and set:
+Copy `.env.example` to `.env` and set at least the API key. Every variable below is read once at startup; a missing required one fails the boot with a clear error rather than the first request.
 
 | Variable | Default | Description |
 |---|---|---|
-| `OPENAI_API_KEY` | — | **Required.** Any OpenAI-compatible API key |
-| `LLM_MODEL` | `gpt-4o-mini` | Model used for all AI tasks |
-| `LLM_MOCK` | `false` | Set `true` for deterministic mock responses (testing) |
-| `DB_PATH` | `/app/db/resumedb.db` | SQLite database path |
-| `PDFS_DIR` | `/app/pdfs` | Directory for generated PDF files |
+| `OPENAI_API_KEY` | none | **Required** unless `LLM_MOCK=true`. Any OpenAI-compatible API key. |
+| `LLM_MODEL` | `gpt-4o-mini` | Model used for generation, evaluation, chat, and PDF import. |
+| `LLM_MOCK` | `false` | `true` runs against a deterministic stub, no key or network call needed. Used by the test suites and `LLM_MOCK=true` local runs. |
+| `DB_PATH` | `/app/db/resumedb.db` | SQLite database path. |
+| `PDFS_DIR` | `/app/pdfs` | Directory for generated PDF files. |
+| `LOG_LEVEL` | `INFO` | Standard Python logging level. |
+| `LOG_FORMAT` | `json` | `json` for structured logs (ship them somewhere); `text` for a human reading the terminal. |
+| `API_DOCS_ENABLED` | `true` | Serves `/docs`, `/redoc`, and `/openapi.json`. Set `false` to remove all three from the running app. |
 
-LiteLLM is used under the hood, so `OPENAI_API_KEY` works with any compatible provider — set `LLM_MODEL` to the appropriate model string for your provider.
+LiteLLM is used under the hood, so `OPENAI_API_KEY` works with any compatible provider, set `LLM_MODEL` to the appropriate model string for your provider.
+
+**Advanced tuning**, all optional with defaults chosen to be safe for a single-user deployment; see `backend/src/resumetailor/core/config.py` for the authoritative list and the reasoning behind each default.
+
+| Variable | Default | Tunes |
+|---|---|---|
+| `LLM_TIMEOUT_S` | `60.0` | Wall-clock ceiling on one provider call. |
+| `LLM_MAX_ATTEMPTS` | `3` | Retry attempts for a transient provider failure. Auth errors and timeouts are never retried. |
+| `LLM_RETRY_BACKOFF_S` | `0.5` | Base delay between retries, doubled each attempt. |
+| `LLM_MAX_TOKENS` | `8192` | Upper bound on tokens generated per call. |
+| `LLM_STREAM_STALL_TIMEOUT_S` | `30.0` | How long a streaming call may go quiet before it is treated as stalled. |
+| `GRACEFUL_SHUTDOWN_TIMEOUT_S` | `60.0` | How long shutdown waits for in-flight SSE streams (generation, chat, evaluation) to finish before the connection is dropped. |
+| `REAPER_INTERVAL_S` | `3600.0` | How often the background orphan reaper re-scans generated PDFs against the database after its one guaranteed run at startup. |
+| `REAPER_DELETE_GRACE_S` | `300.0` | How young a PDF file must be to be exempt from the reaper's delete pass, protecting a file a concurrent generation is still writing. |
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────┐
-│            Docker Container             │
-│                                         │
-│  FastAPI (port 8000)                    │
-│  ├── /api/*        backend routes       │
-│  └── /*            Next.js static files │
-│                                         │
-│  SQLite  ──  master resume              │
-│              generated resumes          │
-│              chat history               │
-│              rules                      │
-│                                         │
-│  rendercv (Typst) ── PDF generation     │
-│  LiteLLM ────────── LLM calls          │
-└─────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│                Docker Container                  │
+│                                                    │
+│  FastAPI (port 8000, loopback-published)          │
+│  ├── /api/*             backend routes            │
+│  ├── /api/health        liveness                  │
+│  ├── /api/health/ready  readiness (DB + PDFs dir)  │
+│  ├── /api/metrics       Prometheus exposition      │
+│  └── /*                 Next.js static export      │
+│                                                    │
+│  SQLite  ──  master resume, history                │
+│              generated resumes                     │
+│              chat history, rules                   │
+│                                                    │
+│  Background: orphan reaper (reconciles PDFs        │
+│              against generated_resumes rows)        │
+│                                                    │
+│  rendercv (Typst) ── PDF generation, timeout +      │
+│                       concurrency-capped subprocess │
+│  LiteLLM ────────── LLM calls, timeout + retry      │
+└──────────────────────────────────────────────────┘
 ```
 
-Generation and evaluation use **Server-Sent Events (SSE)** so progress streams to the UI in real time. The YAML normalizer (`backend/src/resumetailor/yaml_utils.py`) translates any LLM-generated YAML into valid rendercv schema before rendering.
+Generation, evaluation, and chat all use **Server-Sent Events (SSE)** so progress streams to the UI in real time. The resume schema (`backend/src/resumetailor/resume_schema/`) is the single source of truth for the document contract: the same models drive validation on every write path and generate the LLM's own prompt text, rather than the two drifting independently.
+
+For the full picture, including the request lifecycle, the migration system, and how the pieces fit together in more detail than belongs here, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ---
 
 ## Resume Format
 
-The master resume uses [rendercv](https://rendercv.com) YAML format. Click **Download Sample YAML** on the welcome screen for a starter template, or drag-and-drop an existing PDF to have the AI generate the YAML automatically.
+The master resume uses [rendercv](https://rendercv.com) YAML format. On first run, choose **Import a resume PDF** to have the AI convert an existing resume, **Start from the sample** for a filled-in template, or **Write YAML from scratch** for a blank one.
