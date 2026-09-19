@@ -5,12 +5,12 @@
 // at both themes it ships, then a set of `test.fail()`-pinned tests: two
 // interaction tests for D-76 and D-77 (neither is something a static axe
 // ruleset can see at all), and axe-scoped tests for defects found live
-// while building this suite — D-88 and the already-recorded
-// `--lp-ink-tertiary` AA gap are still pinned; D-87 (below) is fixed and its
-// test is a real regression guard now, not a pin — kept out of the general
-// scans above (via KNOWN_EXCLUSIONS) so they don't mask an unrelated
-// regression on every page that happens to share the same editor or caption
-// style. See docs/reports/4-4.2.md for the full evidence behind each.
+// while building this suite — the already-recorded `--lp-ink-tertiary` AA
+// gap is still pinned; D-87 and D-88 (below) are both fixed and their tests
+// are real regression guards now, not pins — kept out of the general scans
+// above (via KNOWN_EXCLUSIONS) so they don't mask an unrelated regression on
+// every page that happens to share the same editor or caption style. See
+// docs/reports/4-4.2.md for the full evidence behind each.
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "fs";
 import { join } from "path";
@@ -26,17 +26,13 @@ import {
 
 const SAMPLE_YAML = readFileSync(join(__dirname, "../fixtures/sample-resume.yaml"), "utf-8");
 
-// Three known, already-tracked gaps excluded from every general scan below
-// so they don't mask an unrelated regression on the same page, each covered
-// precisely (and currently red) by its own dedicated test further down:
-//   - `[data-testid=yaml-editor]` / `[data-testid=resume-yaml-editor]`: the
-//     YAML editor is mounted (even off-screen, behind a settings dialog's
-//     overlay — the document region never unmounts) on nearly every
-//     surface, and carries D-88 (D-87, the dark-mode background bug, is
-//     fixed — see its own test below). The testid wrapper is used rather
-//     than `.cm-editor` alone because CodeMirror's own theme wrapper
-//     (`.cm-theme-light`, D-88's aria-prohibited-attr finding) sits
-//     *outside* `.cm-editor`, as a parent.
+// Known, already-tracked gaps excluded from every general scan below so
+// they don't mask an unrelated regression on the same page, each covered
+// precisely (and currently red, except where noted fixed) by its own
+// dedicated test further down. D-87 and D-88, both on the YAML editor and
+// (for D-88's scrollable-region half) onboarding's sample preview, are now
+// fixed — see their own tests below — so neither surface is excluded here
+// any more; the general per-surface scans cover them like anything else.
 //   - `[data-testid=resume-list-item]`: a Library row (D-76's own
 //     `ResumeListRow`) renders `role="button"` while nesting two real
 //     `<button>` elements (rename, delete) inside it — axe's
@@ -48,12 +44,6 @@ const SAMPLE_YAML = readFileSync(join(__dirname, "../fixtures/sample-resume.yaml
 //     the spec's own value fails the AA that its section 7 requires" — the
 //     shipped value still falls a hair short in light mode (4.49:1 of 4.5:1
 //     required), confirmed live below rather than only in prose.
-//   - `[aria-label="Sample resume"] pre`: onboarding's sample-YAML preview
-//     panel (`features/onboarding/OnboardingRoute.tsx`) is the same
-//     scrollable-region-focusable finding as half of D-88, on an unrelated
-//     component — folded into D-88's own dedicated test below rather than a
-//     new number, since it is the same axe rule and the same fix shape
-//     (give the scrollable container a `tabindex`).
 //   - `[role="radiogroup"][aria-label="Theme"]` (the Appearance dialog's
 //     Light/Dark/System choices): whichever choice is checked renders
 //     accent text on the accent-wash background, and that pairing measured
@@ -70,11 +60,8 @@ const SAMPLE_YAML = readFileSync(join(__dirname, "../fixtures/sample-resume.yaml
 //     in this suite. Flagged in docs/reports/4-4.2.md for a closer look
 //     rather than forced into a `test.fail()` that would itself be flaky.
 const KNOWN_EXCLUSIONS = [
-  "[data-testid=yaml-editor]",
-  "[data-testid=resume-yaml-editor]",
   "[data-testid=resume-list-item]",
   ".text-lp-ink-tertiary",
-  '[aria-label="Sample resume"] pre',
   '[role="radiogroup"][aria-label="Theme"]',
   ".border-dashed.p-lp-8.text-center",
 ];
@@ -399,19 +386,19 @@ test.describe("CodeMirror editor: structural accessibility (D-88)", () => {
   test("the editor has an accessible name and keyboard-focusable scroll region", async ({
     page,
   }) => {
-    test.fail(
-      true,
-      "D-88: two structural gaps in the YAML editor, independent of theme, present on " +
-        "every surface that mounts it. (a) aria-input-field-name: `.cm-content` (the " +
-        "contenteditable text input CodeMirror renders) has no accessible name, even though " +
-        "YamlEditor.tsx passes `aria-label={label}` to the <CodeMirror> wrapper — the prop " +
-        "reaches the outer wrapper, not the inner ARIA-textbox-equivalent `.cm-content` a " +
-        "screen reader actually lands on. (b) scrollable-region-focusable: `.cm-scroller` " +
-        "renders `tabindex=\"-1\"`, so the editor's own scrollable viewport has no keyboard " +
-        "path to focus and scroll it directly, independent of editing. Remove test.fail() " +
-        "once frontend-shell fixes YamlEditor.tsx (or its @uiw/react-codemirror wiring).",
-    );
-
+    // D-88, fixed, both halves. (a) aria-input-field-name: `@uiw/react-codemirror`
+    // spreads unrecognized props (including the `aria-label` YamlEditor.tsx
+    // passed to <CodeMirror>) onto its own outer wrapper `<div>`, not onto
+    // `.cm-content` -- the actual `role="textbox"` contenteditable a screen
+    // reader lands on. Fixed by threading the label through as a real
+    // CodeMirror extension, `EditorView.contentAttributes.of({ "aria-label": ... })`,
+    // which reaches `.cm-content` directly (confirmed via a real render:
+    // `.cm-content` carries the label, and the wrapper no longer does).
+    // (b) scrollable-region-focusable: `.cm-scroller` is constructed by
+    // @codemirror/view with a hardcoded `tabIndex = -1` and there is no
+    // facet for it (`EditorView.editorAttributes` only reaches `.cm-editor`,
+    // not the scroller inside it), so a `ViewPlugin` overrides it to `0`
+    // once the view mounts.
     await page.goto("/");
     await expect(page.locator("[data-testid=yaml-editor]")).toBeVisible();
 
@@ -422,16 +409,11 @@ test.describe("CodeMirror editor: structural accessibility (D-88)", () => {
   });
 
   test("other scrollable regions are keyboard-focusable too", async ({ page, request }) => {
-    test.fail(
-      true,
-      "Same rule as (b) above, unrelated component: onboarding's sample-YAML preview " +
-        "(features/onboarding/OnboardingRoute.tsx's `<pre className=\"...overflow-auto...\">` " +
-        "inside `<aside aria-label=\"Sample resume\">`) is scrollable with no `tabindex`, so " +
-        "it has the same no-keyboard-access gap as the editor's `.cm-scroller`. Folded into " +
-        "D-88 rather than a new defect: same rule, same fix shape (give the scrollable " +
-        "container a tabindex). Remove test.fail() once frontend-shell fixes it.",
-    );
-
+    // D-88, fixed: same rule as (b) above, on the unrelated component it was
+    // folded in from. Onboarding's sample-YAML preview
+    // (features/onboarding/OnboardingRoute.tsx's `<pre className="...overflow-auto...">`
+    // inside `<aside aria-label="Sample resume">`) now carries `tabIndex={0}`
+    // directly, the same fix shape as the editor's scroller.
     await request.delete("/api/master-resume").catch(() => {});
     await page.goto("/");
     await expect(page.locator('[aria-label="Sample resume"] pre')).toBeVisible();

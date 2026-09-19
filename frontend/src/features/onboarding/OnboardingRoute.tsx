@@ -204,7 +204,14 @@ export function OnboardingRoute() {
                 Download
               </a>
             </div>
-            <pre className="max-h-[52dvh] overflow-auto p-lp-4 font-lp-mono text-lp-code text-lp-ink">
+            {/* D-88: a scrollable region with no focusable content of its own
+                has no keyboard path to focus and scroll it (axe's
+                scrollable-region-focusable) -- the plain text below isn't
+                itself focusable, unlike YamlEditor's contenteditable. */}
+            <pre
+              tabIndex={0}
+              className="max-h-[52dvh] overflow-auto p-lp-4 font-lp-mono text-lp-code text-lp-ink"
+            >
               {SAMPLE_YAML}
             </pre>
           </div>
