@@ -56,21 +56,15 @@ const IDLE: RunState = { status: "idle", stageIndex: 0, error: null };
  *
  * ## D-41, the half that is Tailor's
  *
- * `POST /api/resumes/stream` tailors whatever `master_resume` currently holds
- * in the database; it takes no document override (unlike
- * `/api/evaluate/stream`, which accepts arbitrary YAML, so Evaluate can read
- * the live buffer directly). Adding one is an API-contract change outside
- * this task's file ownership (`api/routers/resumes.py` belongs to
- * `api-contract`/`backend-domain`; see the blocker recorded in
- * `docs/reports/3-3.1.md`). The fix available here: if the master buffer has
- * unsaved edits when the user starts a run, they are saved first, so the
- * document the backend reads back out is always the one on screen, not a
- * stale saved copy. A failed save aborts the run rather than silently
- * tailoring the old document.
+ * `POST /api/resumes/stream` now accepts an optional `yaml_content` override
+ * (B-06), so Tailor sends `masterYaml` — the live editor buffer, whether or
+ * not it has unsaved edits — straight into the request, the same way Evaluate
+ * already sends it to `/api/evaluate/stream`. No save-before-generate step is
+ * needed on the primary path any more: the document the backend tailors is
+ * always the one on screen, not a saved copy that might be stale.
  */
 export function TailorPanel({ onEditRules }: { onEditRules: () => void }) {
-  const { jobDescription, openResume, setInspectorTab, masterDirty, saveMasterDraft } =
-    useWorkspace();
+  const { jobDescription, openResume, setInspectorTab, masterYaml } = useWorkspace();
   const invalidateResumes = useInvalidateResumes();
   const rules = useRules();
 
@@ -92,26 +86,10 @@ export function TailorPanel({ onEditRules }: { onEditRules: () => void }) {
     abortRef.current = controller;
     setRun({ status: "running", stageIndex: 0, error: null });
 
-    if (masterDirty) {
-      try {
-        await saveMasterDraft();
-      } catch (error: unknown) {
-        setRun({
-          status: "error",
-          stageIndex: 0,
-          error:
-            error instanceof Error
-              ? `Your unsaved edits could not be saved: ${error.message}`
-              : "Your unsaved edits could not be saved",
-        });
-        return;
-      }
-    }
-
     let produced: GeneratedResume | null = null;
     try {
       for await (const frame of streamTailor(
-        { job_description: jobDescription },
+        { job_description: jobDescription, yaml_content: masterYaml },
         { signal: controller.signal },
       )) {
         if (frame.event === "progress") {

@@ -110,12 +110,8 @@ async function typeJobDescription() {
   return field;
 }
 
-describe("D-41: Tailor operates on the editor's live buffer", () => {
-  test("an unsaved master edit is saved before the tailor request is sent", async () => {
-    (api.saveMasterResume as jest.Mock).mockResolvedValue({
-      ...masterResume,
-      yaml_content: EDITED_YAML,
-    });
+describe("B-06: Tailor sends the live buffer directly, without saving first", () => {
+  test("an unsaved master edit is sent as yaml_content, with no prior save", async () => {
     fetchMock.mockResolvedValue(sseResponse([sseFrame("done", { result: STORED_RESUME })]));
 
     renderInWorkspace(<WorkspaceShell />);
@@ -127,10 +123,10 @@ describe("D-41: Tailor operates on the editor's live buffer", () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
 
-    expect(api.saveMasterResume).toHaveBeenCalledWith(EDITED_YAML);
-    const saveOrder = (api.saveMasterResume as jest.Mock).mock.invocationCallOrder[0];
-    const fetchOrder = fetchMock.mock.invocationCallOrder[0];
-    expect(saveOrder).toBeLessThan(fetchOrder);
+    expect(api.saveMasterResume).not.toHaveBeenCalled();
+    const [path, init] = fetchMock.mock.calls[0];
+    expect(path).toBe("/api/resumes/stream");
+    expect(JSON.parse(init.body as string)).toMatchObject({ yaml_content: EDITED_YAML });
 
     // The run actually completes and hands off to Evaluate, proving the SSE
     // frame was read and parsed, not just that the request was sent.
@@ -139,7 +135,7 @@ describe("D-41: Tailor operates on the editor's live buffer", () => {
     );
   });
 
-  test("a clean buffer is not re-saved before tailoring", async () => {
+  test("a clean buffer is also sent directly, as the saved YAML", async () => {
     fetchMock.mockResolvedValue(sseResponse([sseFrame("done", { result: STORED_RESUME })]));
 
     renderInWorkspace(<WorkspaceShell />);
@@ -150,20 +146,7 @@ describe("D-41: Tailor operates on the editor's live buffer", () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(api.saveMasterResume).not.toHaveBeenCalled();
-  });
-
-  test("a failed save aborts the run: no tailor request is sent, and the draft survives", async () => {
-    (api.saveMasterResume as jest.Mock).mockRejectedValue(new Error("line 4: mapping expected"));
-
-    renderInWorkspace(<WorkspaceShell />);
-    const editor = await screen.findByTestId("yaml-editor-input");
-    fireEvent.change(editor, { target: { value: EDITED_YAML } });
-    await typeJobDescription();
-
-    fireEvent.click(screen.getByTestId("generate-button"));
-
-    expect(await screen.findByRole("alert")).toHaveTextContent("line 4: mapping expected");
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(screen.getByTestId("yaml-editor-input")).toHaveValue(EDITED_YAML);
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(init.body as string)).toMatchObject({ yaml_content: SAVED_YAML });
   });
 });

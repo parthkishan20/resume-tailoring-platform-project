@@ -239,6 +239,10 @@ export interface paths {
      *     turns each `Stage` into the progress frame the frontend expects, and hands
      *     the result to the one function that writes it.
      *
+     *     B-06: `body.yaml_content`, when present, is tailored in place of the saved
+     *     master resume, so a caller (the editor's live buffer) never has to save
+     *     first just to make sure this route reads back what is on screen.
+     *
      *     Wrapped in `sse_stream_tracker.track()` (task 3.5) for the whole of its
      *     body: the lifespan's shutdown waits on this counter so a generation in
      *     progress is not cut off mid-stream, and the same count backs
@@ -558,10 +562,22 @@ export interface components {
     GenerateDoneFrame: {
       result: components["schemas"]["GeneratedResume"];
     };
-    /** GenerateRequest */
+    /**
+     * GenerateRequest
+     * @description B-06: ``yaml_content`` is an optional document override.
+     *
+     *     When present, the pipeline tailors this YAML instead of re-reading the
+     *     saved master resume from the database, mirroring
+     *     ``EvaluateRequest.yaml_content`` in ``evaluate.py``. Additive and
+     *     backward-compatible: omitting it keeps today's behaviour (tailor the
+     *     saved master), which is what lets a caller unaware of the field keep
+     *     working unchanged.
+     */
     GenerateRequest: {
       /** Job Description */
       job_description: string;
+      /** Yaml Content */
+      yaml_content?: string | null;
     };
     /**
      * GeneratedResume
