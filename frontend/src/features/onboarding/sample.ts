@@ -13,7 +13,7 @@
 export const SAMPLE_YAML = `cv:
   name: Your Name
   email: you@example.com
-  phone: "+1 555 000 0000"
+  phone: "+1 415 555 2671"
   location: City, State
   sections:
     education:
