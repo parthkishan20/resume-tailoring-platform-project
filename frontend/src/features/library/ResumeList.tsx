@@ -159,6 +159,11 @@ function ResumeListRow({
         tabIndex={0}
         onClick={onSelect}
         onKeyDown={(event) => {
+          // D-76: React's synthetic events bubble through the component tree,
+          // not the DOM tree, so a keydown from the rename/delete IconButtons
+          // (or a portalled dialog opened from them) reaches this handler too.
+          // Only act on a keydown that targets the row itself.
+          if (event.target !== event.currentTarget) return;
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
             onSelect();
