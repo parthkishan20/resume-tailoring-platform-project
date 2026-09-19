@@ -2,9 +2,12 @@
 
 import { useCallback } from "react";
 import {
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
+  type InfiniteData,
+  type UseInfiniteQueryResult,
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
@@ -246,20 +249,24 @@ export function useResetSystemPrompt(): UseMutationResult<SystemPrompt, Error, v
   });
 }
 
+/** One page's worth of transcript, oldest first (B-07). */
+export const CHAT_PAGE_SIZE = 30;
+
 /**
- * The chat transcript.
+ * The chat transcript, paged backward from the most recent message.
  *
- * `GET /api/chat` has no query parameters at all (D-21): it returns every
- * message ever written, oldest first, with no `limit` or cursor. The route
- * lives in `backend/src/resumetailor/api/`, which this task does not own, so
- * real API-level pagination is logged as a blocker in PLAN.md rather than
- * built here. What this hook can do is put the transcript through the same
- * cache-and-cancel machinery as everything else; `features/assistant/`
- * windows the rendered list over what this returns, which is the achievable
- * half of D-21 until the route grows a `limit`.
+ * `GET /api/chat` grew `limit` and `before_id` in B-07 (D-21's network half):
+ * each page asks for `CHAT_PAGE_SIZE` messages, and `fetchNextPage` (wired to
+ * the "Load earlier" control in `features/assistant/Chat.tsx`) passes the id
+ * of the oldest message already held as `before_id`, so it actually bounds
+ * the network payload rather than windowing an already-fully-fetched list.
+ *
+ * `data.pages` arrives newest-page-first (fetch order); each page is itself
+ * oldest-first. The caller reverses the page order and flattens to get one
+ * chronological list -- see `Chat.tsx`.
  */
-export function useChatHistory(): UseQueryResult<ChatMessage[]> {
-  return useQuery({
+export function useChatHistory(): UseInfiniteQueryResult<InfiniteData<ChatMessage[]>> {
+  return useInfiniteQuery({
     queryKey: queryKeys.chatHistory,
     // `?? []` guards against nothing on the real route (`requestJson` never
     // resolves to `undefined`, only to a schema-validated array); it is here
@@ -267,7 +274,11 @@ export function useChatHistory(): UseQueryResult<ChatMessage[]> {
     // Assistant tab is `forceMount`ed everywhere the shell renders, including
     // integration tests for other surfaces whose `api` mocks stop at the
     // handful of calls their own scenario needs.
-    queryFn: async ({ signal }) => (await api.getChatHistory({ signal })) ?? [],
+    queryFn: async ({ pageParam, signal }) =>
+      (await api.getChatHistory({ limit: CHAT_PAGE_SIZE, beforeId: pageParam }, { signal })) ?? [],
+    initialPageParam: undefined as number | undefined,
+    getNextPageParam: (lastPage) =>
+      lastPage.length === CHAT_PAGE_SIZE ? lastPage[0]?.id : undefined,
   });
 }
 

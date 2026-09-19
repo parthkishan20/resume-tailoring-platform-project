@@ -287,3 +287,17 @@ test("a library page whose rows are the wrong shape is rejected", async () => {
     code: CLIENT_ERROR_CODES.invalidShape,
   });
 });
+
+// -- chat pagination (B-07, D-21) -------------------------------------------
+
+test("getChatHistory with no params fetches the whole transcript, unbounded", async () => {
+  fetchMock.mockResolvedValue(mockResponse(200, "[]"));
+  await api.getChatHistory();
+  expect(fetchMock).toHaveBeenCalledWith("/api/chat", { method: "GET" });
+});
+
+test("getChatHistory sends limit and before_id as a bounded, paged request", async () => {
+  fetchMock.mockResolvedValue(mockResponse(200, "[]"));
+  await api.getChatHistory({ limit: 30, beforeId: 16 });
+  expect(fetchMock).toHaveBeenCalledWith("/api/chat?limit=30&before_id=16", { method: "GET" });
+});

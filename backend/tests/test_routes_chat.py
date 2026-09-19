@@ -61,6 +61,58 @@ async def test_clear_chat(client):
     assert response.status_code == 204
 
 
+# ── Pagination (B-07, D-21) ─────────────────────────────────────────────────
+
+
+@pytest.mark.anyio
+async def test_get_chat_history_limit_bounds_the_page(client):
+    for i in range(10):
+        await client.post("/api/chat/stream", json={"message": f"m{i}"})
+
+    response = await client.get("/api/chat", params={"limit": 4})
+    assert response.status_code == 200
+    messages = response.json()
+    assert len(messages) == 4
+
+
+@pytest.mark.anyio
+async def test_get_chat_history_before_id_pages_backward(client, sim):
+    sim.sim_llm.set_stream_chunks(["ok"])
+    for i in range(6):
+        await client.post("/api/chat/stream", json={"message": f"m{i}"})
+
+    first_page = (await client.get("/api/chat", params={"limit": 4})).json()
+    assert len(first_page) == 4
+
+    second_page = (
+        await client.get("/api/chat", params={"limit": 4, "before_id": first_page[0]["id"]})
+    ).json()
+    assert len(second_page) == 4
+    assert second_page[-1]["id"] < first_page[0]["id"]
+    # Each page is itself oldest-first.
+    assert [m["id"] for m in second_page] == sorted(m["id"] for m in second_page)
+
+
+@pytest.mark.anyio
+async def test_get_chat_history_limit_out_of_range_is_422(client):
+    response = await client.get("/api/chat", params={"limit": 0})
+    assert response.status_code == 422
+
+    response = await client.get("/api/chat", params={"limit": 1000})
+    assert response.status_code == 422
+
+
+@pytest.mark.anyio
+async def test_get_chat_history_with_no_params_is_unchanged(client, sim):
+    sim.sim_llm.set_stream_chunks(["ok"])
+    for i in range(3):
+        await client.post("/api/chat/stream", json={"message": f"m{i}"})
+
+    response = await client.get("/api/chat")
+    assert response.status_code == 200
+    assert len(response.json()) == 6  # every user + assistant turn, unbounded
+
+
 # ── Tool calling (task 3.3, D-33) ───────────────────────────────────────────
 
 

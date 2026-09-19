@@ -11,7 +11,18 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Get History */
+    /**
+     * Get History
+     * @description The transcript, oldest first.
+     *
+     *     B-07 / D-21. With no query parameters this is unchanged: the whole
+     *     transcript, for any existing caller. Passing `limit` bounds what comes
+     *     back over the wire instead of the client fetching everything and slicing
+     *     it; passing `before_id` too pages backward from there (the id of the
+     *     oldest message already held), which is what the frontend's "Load
+     *     earlier" now does instead of just revealing more of an already-fetched
+     *     list.
+     */
     get: operations["get_history_api_chat_get"];
     put?: never;
     post?: never;
@@ -814,7 +825,10 @@ export type $defs = Record<string, never>;
 export interface operations {
   get_history_api_chat_get: {
     parameters: {
-      query?: never;
+      query?: {
+        limit?: number | null;
+        before_id?: number | null;
+      };
       header?: never;
       path?: never;
       cookie?: never;
@@ -828,6 +842,18 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ChatMessage"][];
+        };
+      };
+      /** @description The request was understood and refused. Any of the three shapes: FastAPI's array of issues for a malformed body, a located-issues sentence for a document RenderCV rejects, or a `PDF_EXTRACT_FAILED` envelope for an unreadable upload. */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json":
+            | components["schemas"]["ErrorEnvelope"]
+            | components["schemas"]["ErrorDetail"]
+            | components["schemas"]["RequestValidationDetail"];
         };
       };
     };

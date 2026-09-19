@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -13,6 +13,7 @@ from resumetailor.backend_api import BackendAPI
 from resumetailor.core.config import get_settings
 from resumetailor.db.models import ChatMessage
 from resumetailor.db.repositories import get_chat_messages, add_chat_message, clear_chat, get_system_prompt
+from resumetailor.db.repositories.chat import MAX_PAGE_SIZE
 from resumetailor.deps import get_backend
 from resumetailor.core.errors import BackendError
 from resumetailor.core.metrics import sse_stream_tracker
@@ -71,9 +72,22 @@ class ChatRequest(BaseModel):
     message: str = Field(max_length=MAX_CHAT_MESSAGE_CHARS)
 
 
-@router.get("/api/chat", response_model=list[ChatMessage])
-async def get_history():
-    return await asyncio.to_thread(get_chat_messages, _db_path())
+@router.get("/api/chat", response_model=list[ChatMessage], responses=error_responses(422))
+async def get_history(
+    limit: int | None = Query(default=None, ge=1, le=MAX_PAGE_SIZE),
+    before_id: int | None = Query(default=None, ge=1),
+):
+    """The transcript, oldest first.
+
+    B-07 / D-21. With no query parameters this is unchanged: the whole
+    transcript, for any existing caller. Passing `limit` bounds what comes
+    back over the wire instead of the client fetching everything and slicing
+    it; passing `before_id` too pages backward from there (the id of the
+    oldest message already held), which is what the frontend's "Load
+    earlier" now does instead of just revealing more of an already-fetched
+    list.
+    """
+    return await asyncio.to_thread(get_chat_messages, _db_path(), limit=limit, before_id=before_id)
 
 
 @router.post(
