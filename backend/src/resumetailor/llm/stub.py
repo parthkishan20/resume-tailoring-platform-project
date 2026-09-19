@@ -38,7 +38,7 @@ MOCK_GENERATION_RESULT_YAML: str = """\
 cv:
   name: Mock User
   email: mock@example.com
-  phone: "+10000000000"
+  phone: "+14155552671"
   location: Mock City, MC
   sections:
     education:
