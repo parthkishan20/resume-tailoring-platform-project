@@ -155,6 +155,63 @@ async def test_generate_stream_without_a_master_resume(client, sim, db_path):
 
 
 @pytest.mark.anyio
+async def test_generate_stream_yaml_content_overrides_saved_master(client, sim, db_path):
+    """B-06: an explicit `yaml_content` tailors that document, not the saved master."""
+    from resumetailor.db.repositories import upsert_master_resume
+    import asyncio
+    await asyncio.to_thread(upsert_master_resume, db_path, MOCK_GENERATION_RESULT_YAML)
+
+    override_yaml = MOCK_GENERATION_RESULT_YAML.replace(
+        "Mock User", "Override User"
+    ).replace("mock@example.com", "override@example.com")
+
+    sim.sim_llm.set_complete_response(json.dumps({"yaml_content": MOCK_GENERATION_RESULT_YAML}))
+    sim.sim_pdf_render.set_response(b"%PDF-1.4 test")
+
+    response = await client.post(
+        "/api/resumes/stream",
+        json={
+            "job_description": "Software Engineer at Mock Corp",
+            "yaml_content": override_yaml,
+        },
+    )
+    assert response.status_code == 200
+    event_types = [
+        l.replace("event: ", "").strip() for l in response.text.split("\n") if l.startswith("event:")
+    ]
+    assert "done" in event_types
+
+    # The critique pass's user content is "Draft:\n...\n\nMaster:\n...\n\nJD:\n...";
+    # the draft always echoes the mocked LLM response (Mock User), so only the
+    # master section is checked for the override taking effect.
+    user_content = sim.sim_llm.last_complete_messages[1]["content"]
+    master_section = user_content.split("Master:\n", 1)[1].split("\n\nJD:", 1)[0]
+    assert "Override User" in master_section
+    assert "Mock User" not in master_section
+
+
+@pytest.mark.anyio
+async def test_generate_stream_yaml_content_override_needs_no_saved_master(client, sim, db_path):
+    """B-06: the override makes the saved master resume optional."""
+    sim.sim_llm.set_complete_response(json.dumps({"yaml_content": MOCK_GENERATION_RESULT_YAML}))
+    sim.sim_pdf_render.set_response(b"%PDF-1.4 test")
+
+    response = await client.post(
+        "/api/resumes/stream",
+        json={
+            "job_description": "Software Engineer at Mock Corp",
+            "yaml_content": MOCK_GENERATION_RESULT_YAML,
+        },
+    )
+    assert response.status_code == 200
+    event_types = [
+        l.replace("event: ", "").strip() for l in response.text.split("\n") if l.startswith("event:")
+    ]
+    assert "done" in event_types
+    assert "error" not in event_types
+
+
+@pytest.mark.anyio
 async def test_generate_stream_render_failure_is_opaque(client, sim, db_path):
     """D-53: a render failure carries the subprocess's whole output."""
     from resumetailor.db.repositories import upsert_master_resume

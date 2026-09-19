@@ -264,11 +264,24 @@
         "type": "object"
       },
       "GenerateRequest": {
+        "description": "B-06: ``yaml_content`` is an optional document override.\n\nWhen present, the pipeline tailors this YAML instead of re-reading the\nsaved master resume from the database, mirroring\n``EvaluateRequest.yaml_content`` in ``evaluate.py``. Additive and\nbackward-compatible: omitting it keeps today's behaviour (tailor the\nsaved master), which is what lets a caller unaware of the field keep\nworking unchanged.",
         "properties": {
           "job_description": {
             "maxLength": 20000,
             "title": "Job Description",
             "type": "string"
+          },
+          "yaml_content": {
+            "anyOf": [
+              {
+                "maxLength": 100000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Yaml Content"
           }
         },
         "required": ["job_description"],
@@ -1424,7 +1437,7 @@
     },
     "/api/resumes/stream": {
       "post": {
-        "description": "Run the tailoring pipeline, narrating it as server-sent events.\n\nThe work is `domain.tailoring`; this handler reads what the pipeline needs,\nturns each `Stage` into the progress frame the frontend expects, and hands\nthe result to the one function that writes it.\n\nWrapped in `sse_stream_tracker.track()` (task 3.5) for the whole of its\nbody: the lifespan's shutdown waits on this counter so a generation in\nprogress is not cut off mid-stream, and the same count backs\n`resumetailor_sse_streams_active`. See `main.py`'s `lifespan`.",
+        "description": "Run the tailoring pipeline, narrating it as server-sent events.\n\nThe work is `domain.tailoring`; this handler reads what the pipeline needs,\nturns each `Stage` into the progress frame the frontend expects, and hands\nthe result to the one function that writes it.\n\nB-06: `body.yaml_content`, when present, is tailored in place of the saved\nmaster resume, so a caller (the editor's live buffer) never has to save\nfirst just to make sure this route reads back what is on screen.\n\nWrapped in `sse_stream_tracker.track()` (task 3.5) for the whole of its\nbody: the lifespan's shutdown waits on this counter so a generation in\nprogress is not cut off mid-stream, and the same count backs\n`resumetailor_sse_streams_active`. See `main.py`'s `lifespan`.",
         "operationId": "generate_resume_stream_api_resumes_stream_post",
         "requestBody": {
           "content": {
