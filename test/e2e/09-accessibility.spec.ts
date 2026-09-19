@@ -2,15 +2,16 @@
 //
 // AGENTS.md §8's accessibility gate: "axe on every route, zero serious or
 // critical [violations]." (D-44.) Scans every distinct surface the app has
-// at both themes it ships, then a set of `test.fail()`-pinned tests: two
-// interaction tests for D-76 and D-77 (neither is something a static axe
+// at both themes it ships, then a set of `test.fail()`-pinned tests: one
+// interaction test for D-76 (neither D-76 nor D-77 is something a static axe
 // ruleset can see at all), and axe-scoped tests for defects found live
 // while building this suite — D-88 and the already-recorded
-// `--lp-ink-tertiary` AA gap are still pinned; D-87 (below) is fixed and its
-// test is a real regression guard now, not a pin — kept out of the general
-// scans above (via KNOWN_EXCLUSIONS) so they don't mask an unrelated
-// regression on every page that happens to share the same editor or caption
-// style. See docs/reports/4-4.2.md for the full evidence behind each.
+// `--lp-ink-tertiary` AA gap are still pinned; D-87 and D-77 (below) are
+// fixed and their tests are real regression guards now, not pins — kept out
+// of the general scans above (via KNOWN_EXCLUSIONS) so they don't mask an
+// unrelated regression on every page that happens to share the same editor
+// or caption style. See docs/reports/4-4.2.md for the full evidence behind
+// each.
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "fs";
 import { join } from "path";
@@ -260,11 +261,12 @@ test.describe("Accessibility: settings", () => {
 
 // D-76 and D-77 are real, already-reproduced defects (docs/reports/4-4.1.md,
 // PLAN.md's defect register), each owned by `frontend-features`, not
-// `qa-e2e`. These two tests encode the *fixed* behaviour and are marked
-// `test.fail()` so the suite stays green today while still failing loudly,
-// for the right reason, the day someone attempts the fix without removing
-// the annotation. Both are deterministic (a bounded network wait / a bounded
-// click timeout against a static layout bug), not races against real time.
+// `qa-e2e`. D-77 (below) is fixed; its test is a real regression guard now,
+// deterministic against a static layout bug rather than a race against real
+// time. D-76 is still open: its test encodes the *fixed* behaviour and stays
+// marked `test.fail()` so the suite stays green today while still failing
+// loudly, for the right reason, the day someone attempts the fix without
+// removing the annotation.
 test.describe("Keyboard operability: Library row confirmations (D-76)", () => {
   test.beforeEach(async ({ request }) => {
     test.setTimeout(60_000);
@@ -329,22 +331,24 @@ test.describe("Layout: GeneratedResumeDocument header at the default viewport (D
   });
 
   test("the header's Delete action is clickable at 1280x720", async ({ page }) => {
-    test.fail(
-      true,
-      "D-77: GeneratedResumeDocument's header (features/library/GeneratedResumeDocument.tsx) " +
-        "commits to lg:flex-row at the *global* 1024px viewport breakpoint regardless of its " +
-        "own column's rendered width — nav (216px) + Library list (320px) + Inspector (380px) " +
-        "leave only ~364px for a header that needs more. The action buttons overlap the " +
-        "Inspector's tab strip and Playwright's actionability check times out with " +
-        "'intercepts pointer events', exactly as docs/reports/4-4.1.md found it live. Remove " +
-        "test.fail() once frontend-features fixes the breakpoint. 06-library.spec.ts's own " +
-        "'document' describe block widens the viewport to 1600x900 specifically to route " +
-        "around this and test unrelated behaviour instead.",
-    );
+    // D-77, fixed: `GeneratedResumeDocument`'s header committed to
+    // `lg:flex-row` at the *global* 1024px viewport breakpoint regardless of
+    // its own column's rendered width, so nav (216px) + Library list (320px)
+    // + Inspector (380px) leaving only ~364px for the header still forced a
+    // single row. The header's own `<section>` is now a `@container`
+    // (Tailwind v4 core, no plugin) and the row-commit variants are
+    // `@xl:*` (576px of the *column's own* rendered width, not the
+    // viewport) instead of `lg:*`, so the header only goes single-row once
+    // its own column genuinely has room — it stays two-row here instead of
+    // overlapping the Inspector. 06-library.spec.ts's own "document"
+    // describe block still widens the viewport to 1600x900, now simply to
+    // exercise the single-row layout deliberately rather than to route
+    // around a bug.
 
     // The suite's own default viewport (playwright.config.ts, Desktop Chrome
     // 1280x720) — deliberately not widened, unlike every other Library
-    // document spec, because this test's whole subject is what breaks there.
+    // document spec, because this test's whole subject is what used to break
+    // there.
     await page.goto("/");
     await page.locator("[data-testid=nav-library]").click();
     await page.locator("[data-testid=resume-list-item]").first().click();
