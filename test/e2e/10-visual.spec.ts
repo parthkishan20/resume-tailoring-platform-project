@@ -183,19 +183,23 @@ test.describe("Visual: Library", () => {
     });
   });
 
-  // D-77, visual evidence to go with 09-accessibility.spec.ts's
-  // `test.fail()`-pinned click test: this baseline captures today's actual
-  // overlap at the suite's real default viewport (not widened). It is not
-  // asserted against a "clean" reference — there is no clean state to
-  // compare against yet — it exists so the overlap is visible in a diff
-  // viewer, and so this baseline necessarily changes (a change worth
-  // reviewing, not silently accepting) once D-77 is fixed.
-  test("open document header overlap at the default viewport (D-77)", async ({ page }) => {
+  // D-77 is fixed (GeneratedResumeDocument.tsx's header now queries its own
+  // `@container` width via `@xl:*` instead of the global `lg:` viewport
+  // breakpoint, so it only goes single-row once its own column has room).
+  // The pre-fix baseline here (`library-document-header-overlap-d77.png`)
+  // documented the bug itself (the header's buttons overlapping the
+  // Inspector's tab strip at the suite's real default viewport) and has been
+  // deleted rather than kept as a now-wrong "known good" image; this
+  // assertion will write a fresh baseline reflecting the fix (a two-row
+  // header, since 364px of column width is still well under the @xl 576px
+  // threshold) the next time it runs against a real browser, which is what
+  // confirms the fix visually.
+  test("open document header, no overlap, at the default viewport (D-77)", async ({ page }) => {
     await page.goto("/");
     await page.locator("[data-testid=nav-library]").click();
     await page.locator("[data-testid=resume-list-item]").first().click();
     await expect(page.locator("[data-testid=delete-resume-document]")).toBeAttached();
-    await expect(page).toHaveScreenshot("library-document-header-overlap-d77.png", {
+    await expect(page).toHaveScreenshot("library-document-header-fixed-d77.png", {
       fullPage: true,
       mask: [page.locator("header .font-lp-mono")],
     });

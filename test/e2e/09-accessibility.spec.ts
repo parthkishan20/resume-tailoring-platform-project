@@ -2,16 +2,15 @@
 //
 // AGENTS.md §8's accessibility gate: "axe on every route, zero serious or
 // critical [violations]." (D-44.) Scans every distinct surface the app has
-// at both themes it ships, then a set of `test.fail()`-pinned tests: an
-// interaction test for D-77 and axe-scoped tests for defects found live
-// while building this suite — D-88, D-76's separate nested-interactive ARIA
-// finding, and the already-recorded `--lp-ink-tertiary` AA gap are still
-// pinned; D-76's own keydown-bubbling interaction tests and D-87 (below) are
-// fixed and their tests are real regression guards now, not pins — kept out
-// of the general scans above (via KNOWN_EXCLUSIONS) so they don't mask an
-// unrelated regression on every page that happens to share the same editor,
-// row, or caption style. See docs/reports/4-4.2.md for the full evidence
-// behind each.
+// at both themes it ships, then a set of `test.fail()`-pinned tests: D-88's
+// axe-scoped tests, D-76's separate nested-interactive ARIA finding, and the
+// already-recorded `--lp-ink-tertiary` AA gap are still pinned; D-76's own
+// keydown-bubbling interaction tests, D-77's interaction test, and D-87
+// (below) are fixed and their tests are real regression guards now, not
+// pins — kept out of the general scans above (via KNOWN_EXCLUSIONS) so they
+// don't mask an unrelated regression on every page that happens to share the
+// same editor, row, or caption style. See docs/reports/4-4.2.md for the full
+// evidence behind each.
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "fs";
 import { join } from "path";
@@ -265,7 +264,8 @@ test.describe("Accessibility: settings", () => {
 // own native Enter-triggers-click behaviour is no longer suppressed. These
 // two tests are real regression guards now, not pins. (The separate
 // nested-interactive ARIA finding folded into D-76 further down is still
-// pinned — this fix does not restructure the row's ARIA pattern.)
+// pinned — this fix does not restructure the row's ARIA pattern.) D-77
+// (below) is likewise fixed and its own test is a real regression guard now.
 test.describe("Keyboard operability: Library row confirmations (D-76)", () => {
   test.beforeEach(async ({ request }) => {
     test.setTimeout(60_000);
@@ -305,22 +305,24 @@ test.describe("Layout: GeneratedResumeDocument header at the default viewport (D
   });
 
   test("the header's Delete action is clickable at 1280x720", async ({ page }) => {
-    test.fail(
-      true,
-      "D-77: GeneratedResumeDocument's header (features/library/GeneratedResumeDocument.tsx) " +
-        "commits to lg:flex-row at the *global* 1024px viewport breakpoint regardless of its " +
-        "own column's rendered width — nav (216px) + Library list (320px) + Inspector (380px) " +
-        "leave only ~364px for a header that needs more. The action buttons overlap the " +
-        "Inspector's tab strip and Playwright's actionability check times out with " +
-        "'intercepts pointer events', exactly as docs/reports/4-4.1.md found it live. Remove " +
-        "test.fail() once frontend-features fixes the breakpoint. 06-library.spec.ts's own " +
-        "'document' describe block widens the viewport to 1600x900 specifically to route " +
-        "around this and test unrelated behaviour instead.",
-    );
+    // D-77, fixed: `GeneratedResumeDocument`'s header committed to
+    // `lg:flex-row` at the *global* 1024px viewport breakpoint regardless of
+    // its own column's rendered width, so nav (216px) + Library list (320px)
+    // + Inspector (380px) leaving only ~364px for the header still forced a
+    // single row. The header's own `<section>` is now a `@container`
+    // (Tailwind v4 core, no plugin) and the row-commit variants are
+    // `@xl:*` (576px of the *column's own* rendered width, not the
+    // viewport) instead of `lg:*`, so the header only goes single-row once
+    // its own column genuinely has room — it stays two-row here instead of
+    // overlapping the Inspector. 06-library.spec.ts's own "document"
+    // describe block still widens the viewport to 1600x900, now simply to
+    // exercise the single-row layout deliberately rather than to route
+    // around a bug.
 
     // The suite's own default viewport (playwright.config.ts, Desktop Chrome
     // 1280x720) — deliberately not widened, unlike every other Library
-    // document spec, because this test's whole subject is what breaks there.
+    // document spec, because this test's whole subject is what used to break
+    // there.
     await page.goto("/");
     await page.locator("[data-testid=nav-library]").click();
     await page.locator("[data-testid=resume-list-item]").first().click();

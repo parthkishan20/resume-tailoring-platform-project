@@ -151,11 +151,23 @@ export function GeneratedResumeDocument({ summary }: { summary: GeneratedResume 
   const saveError = update.isError ? update.error.message : null;
 
   return (
-    <section aria-label={`Resume: ${name}`} className="flex h-full min-w-0 flex-col">
+    <section aria-label={`Resume: ${name}`} className="@container flex h-full min-w-0 flex-col">
+      {/*
+       * Two rows below `@xl`, one row from `@xl` up, queried against this
+       * section's own rendered width rather than the viewport (D-77). Unlike
+       * `MasterDocument`, this column shares its row with the Library list
+       * (fixed 320px) and the Inspector (resizable), so it never reaches a
+       * stable fraction of the viewport `lg` keys off of; a global breakpoint
+       * left the header's five controls (rename, mode switch, Save,
+       * Re-render, Delete) overlapping the Inspector whenever that math left
+       * less than the row actually needs. This header needs more room than
+       * `MasterDocument`'s (one extra button, Re-render), hence the wider
+       * `@xl` versus that header's reliance on the plain `lg` breakpoint.
+       */}
       <header
         className={cn(
           "flex shrink-0 flex-col gap-lp-2 border-b border-lp-rule bg-lp-paper px-lp-4 py-lp-2",
-          "lg:h-lp-panel-header lg:flex-row lg:items-center lg:justify-between lg:gap-lp-3 lg:py-0",
+          "@xl:h-lp-panel-header @xl:flex-row @xl:items-center @xl:justify-between @xl:gap-lp-3 @xl:py-0",
         )}
       >
         <div className="flex min-w-0 items-center gap-lp-2">
@@ -175,7 +187,7 @@ export function GeneratedResumeDocument({ summary }: { summary: GeneratedResume 
             {dirty ? "Unsaved edits" : `Saved ${new Date(resume.updated_at).toLocaleString()}`}
           </span>
         </div>
-        <div className="flex flex-wrap items-center gap-lp-2 lg:shrink-0">
+        <div className="flex flex-wrap items-center gap-lp-2 @xl:shrink-0">
           <ModeSwitch value={mode} onChange={setMode} />
           <Button
             data-testid="save-resume"
