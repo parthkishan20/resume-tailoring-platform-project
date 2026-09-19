@@ -139,13 +139,11 @@ describe("chat pagination (B-07, D-21)", () => {
     // messages immediately before `beforeId` (or the most recent `limit` when
     // `beforeId` is absent), so this fails unless the client actually narrows
     // the request instead of windowing an already-fully-fetched array.
-    getChatHistory.mockImplementation(
-      async (params?: { limit?: number; beforeId?: number }) => {
-        const ceiling = params?.beforeId ?? history.length + 1;
-        const older = history.filter((m) => m.id < ceiling);
-        return params?.limit ? older.slice(-params.limit) : older;
-      },
-    );
+    getChatHistory.mockImplementation(async (params?: { limit?: number; beforeId?: number }) => {
+      const ceiling = params?.beforeId ?? history.length + 1;
+      const older = history.filter((m) => m.id < ceiling);
+      return params?.limit ? older.slice(-params.limit) : older;
+    });
 
     renderChat();
 
