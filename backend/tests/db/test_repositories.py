@@ -296,6 +296,34 @@ def test_get_chat_messages_limit_larger_than_history(db_path):
     assert len(get_chat_messages(db_path, limit=30)) == 1
 
 
+def test_get_chat_messages_before_id_pages_backward(db_path):
+    """B-07: `before_id` is the cursor for the page before the one held."""
+    ids = [add_chat_message(db_path, "user", f"m{i}").id for i in range(10)]
+    first_page = get_chat_messages(db_path, limit=3)
+    assert [m.content for m in first_page] == ["m7", "m8", "m9"]
+
+    second_page = get_chat_messages(db_path, limit=3, before_id=first_page[0].id)
+    assert [m.content for m in second_page] == ["m4", "m5", "m6"]
+    assert second_page[0].id == ids[4]
+
+
+def test_get_chat_messages_before_id_without_limit_returns_everything_older(db_path):
+    ids = [add_chat_message(db_path, "user", f"m{i}").id for i in range(5)]
+    older = get_chat_messages(db_path, before_id=ids[3])
+    assert [m.content for m in older] == ["m0", "m1", "m2"]
+
+
+def test_get_chat_messages_before_id_at_start_returns_empty(db_path):
+    ids = [add_chat_message(db_path, "user", f"m{i}").id for i in range(3)]
+    assert get_chat_messages(db_path, limit=10, before_id=ids[0]) == []
+
+
+def test_get_chat_messages_limit_clamped_to_max_page_size(db_path):
+    for i in range(5):
+        add_chat_message(db_path, "user", f"m{i}")
+    assert len(get_chat_messages(db_path, limit=10_000)) == 5
+
+
 def test_clear_chat(db_path):
     add_chat_message(db_path, "user", "Hello")
     clear_chat(db_path)

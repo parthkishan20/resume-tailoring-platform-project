@@ -125,8 +125,8 @@ describe("loading the transcript", () => {
   });
 });
 
-describe("chat pagination (D-21)", () => {
-  test("only the most recent messages render, with a control to reveal more", async () => {
+describe("chat pagination (B-07, D-21)", () => {
+  test("only the most recent page renders, with a control that fetches an older page over the wire", async () => {
     const history = Array.from({ length: 45 }, (_, i) => ({
       id: i + 1,
       user_id: "default",
@@ -134,18 +134,44 @@ describe("chat pagination (D-21)", () => {
       content: `Message ${i + 1}`,
       created_at: "2026-01-01T00:00:00Z",
     }));
-    getChatHistory.mockResolvedValue(history);
+
+    // A real cursor-paginated backend: each call returns only the `limit`
+    // messages immediately before `beforeId` (or the most recent `limit` when
+    // `beforeId` is absent), so this fails unless the client actually narrows
+    // the request instead of windowing an already-fully-fetched array.
+    getChatHistory.mockImplementation(
+      async (params?: { limit?: number; beforeId?: number }) => {
+        const ceiling = params?.beforeId ?? history.length + 1;
+        const older = history.filter((m) => m.id < ceiling);
+        return params?.limit ? older.slice(-params.limit) : older;
+      },
+    );
+
     renderChat();
 
     const messages = await screen.findAllByTestId("chat-message");
     expect(messages).toHaveLength(30);
     expect(screen.getByText("Message 45")).toBeInTheDocument();
     expect(screen.queryByText("Message 1")).not.toBeInTheDocument();
+    expect(getChatHistory).toHaveBeenCalledWith(
+      { limit: 30, beforeId: undefined },
+      expect.objectContaining({ signal: expect.anything() }),
+    );
 
     fireEvent.click(screen.getByTestId("chat-load-earlier"));
 
     await waitFor(() => expect(screen.getAllByTestId("chat-message")).toHaveLength(45));
     expect(screen.getByText("Message 1")).toBeInTheDocument();
+
+    // The second page was requested with the oldest id already held as the
+    // cursor, not merely revealed from data already fetched.
+    expect(getChatHistory).toHaveBeenCalledWith(
+      { limit: 30, beforeId: 16 },
+      expect.objectContaining({ signal: expect.anything() }),
+    );
+
+    // Fewer than a full page came back, so there is nothing left to load.
+    expect(screen.queryByTestId("chat-load-earlier")).not.toBeInTheDocument();
   });
 });
 

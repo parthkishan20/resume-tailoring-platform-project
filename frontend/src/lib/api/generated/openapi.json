@@ -724,7 +724,45 @@
         "summary": "Clear History"
       },
       "get": {
+        "description": "The transcript, oldest first.\n\nB-07 / D-21. With no query parameters this is unchanged: the whole\ntranscript, for any existing caller. Passing `limit` bounds what comes\nback over the wire instead of the client fetching everything and slicing\nit; passing `before_id` too pages backward from there (the id of the\noldest message already held), which is what the frontend's \"Load\nearlier\" now does instead of just revealing more of an already-fetched\nlist.",
         "operationId": "get_history_api_chat_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 100,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -739,6 +777,27 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RequestValidationDetail"
+                    }
+                  ],
+                  "title": "Response 422 Get History Api Chat Get"
+                }
+              }
+            },
+            "description": "The request was understood and refused. Any of the three shapes: FastAPI's array of issues for a malformed body, a located-issues sentence for a document RenderCV rejects, or a `PDF_EXTRACT_FAILED` envelope for an unreadable upload."
           }
         },
         "summary": "Get History"

@@ -9,17 +9,6 @@ import { useWorkspace } from "@/features/workspace/WorkspaceContext";
 import { streamChat, type ChatAction } from "@/lib/api";
 import type { ChatMessage } from "@/lib/types";
 
-/**
- * How many of the persisted transcript's most recent messages are rendered at
- * once, with "Load earlier messages" revealing more (D-21's frontend half).
- *
- * `GET /api/chat` has no `limit` or cursor (see `queries.ts`'s
- * `useChatHistory` doc), so this windows what is already fetched rather than
- * fetching less: it bounds the DOM, not the network payload. The network half
- * needs a route change this task does not own; see PLAN.md's Open blockers.
- */
-const PAGE_SIZE = 30;
-
 const SUGGESTIONS = [
   "Tighten my summary for a senior role.",
   "Add a bullet about leading a migration.",
@@ -61,7 +50,6 @@ export function Chat() {
   const history = useChatHistory();
   const { notifyAssistantMasterEdit } = useWorkspace();
 
-  const [windowSize, setWindowSize] = React.useState(PAGE_SIZE);
   const [live, setLive] = React.useState<LiveMessage[]>([]);
   const [lastAction, setLastAction] = React.useState<ChatAction | null>(null);
   const [input, setInput] = React.useState("");
@@ -73,10 +61,11 @@ export function Chat() {
 
   React.useEffect(() => () => abortRef.current?.abort(), []);
 
-  const persisted = history.data ?? [];
-  const windowed = persisted.slice(-windowSize);
-  const hasEarlier = persisted.length > windowed.length;
-  const visible = [...windowed, ...live];
+  // `data.pages` arrives newest-page-first; each page is oldest-first.
+  // Reversing the page order and flattening gives one chronological list.
+  const persisted = [...(history.data?.pages ?? [])].reverse().flat();
+  const hasEarlier = history.hasNextPage ?? false;
+  const visible = [...persisted, ...live];
 
   React.useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -182,10 +171,11 @@ export function Chat() {
               <button
                 type="button"
                 data-testid="chat-load-earlier"
-                onClick={() => setWindowSize((size) => size + PAGE_SIZE)}
-                className="self-center font-lp-sans text-lp-caption font-medium text-lp-accent hover:underline"
+                onClick={() => void history.fetchNextPage()}
+                disabled={history.isFetchingNextPage}
+                className="self-center font-lp-sans text-lp-caption font-medium text-lp-accent hover:underline disabled:opacity-60"
               >
-                Load earlier messages
+                {history.isFetchingNextPage ? "Loading..." : "Load earlier messages"}
               </button>
             ) : null}
 

@@ -114,8 +114,22 @@ export const api = {
   renderResume: (id: number, options?: RequestOptions): Promise<GeneratedResume> =>
     requestJson(`/api/resumes/${id}/render`, generatedResumeSchema, bare("POST", options)),
 
-  getChatHistory: (options?: RequestOptions): Promise<ChatMessage[]> =>
-    requestJson("/api/chat", chatMessageListSchema, bare("GET", options)),
+  /**
+   * A page of the transcript, oldest first.
+   *
+   * `limit` bounds the page; `beforeId` pages backward from there (the id of
+   * the oldest message already held). Neither given returns the whole
+   * transcript, unchanged from before B-07.
+   */
+  getChatHistory: (
+    params?: { limit?: number; beforeId?: number },
+    options?: RequestOptions,
+  ): Promise<ChatMessage[]> =>
+    requestJson(
+      `/api/chat${query({ limit: params?.limit, before_id: params?.beforeId })}`,
+      chatMessageListSchema,
+      bare("GET", options),
+    ),
 
   clearChat: (options?: RequestOptions): Promise<void> =>
     requestNoContent("/api/chat", bare("DELETE", options)),
