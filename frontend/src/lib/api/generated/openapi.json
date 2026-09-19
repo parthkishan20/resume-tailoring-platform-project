@@ -547,14 +547,17 @@
       "RuleItem": {
         "properties": {
           "rule_key": {
+            "maxLength": 200,
             "title": "Rule Key",
             "type": "string"
           },
           "rule_value": {
+            "maxLength": 200,
             "title": "Rule Value",
             "type": "string"
           },
           "section": {
+            "maxLength": 200,
             "title": "Section",
             "type": "string"
           }
@@ -569,6 +572,7 @@
             "items": {
               "$ref": "#/components/schemas/RuleItem"
             },
+            "maxItems": 50,
             "title": "Rules",
             "type": "array"
           }
