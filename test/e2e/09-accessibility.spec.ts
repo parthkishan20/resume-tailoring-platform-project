@@ -2,15 +2,16 @@
 //
 // AGENTS.md §8's accessibility gate: "axe on every route, zero serious or
 // critical [violations]." (D-44.) Scans every distinct surface the app has
-// at both themes it ships, then a set of `test.fail()`-pinned tests: two
-// interaction tests for D-76 and D-77 (neither is something a static axe
-// ruleset can see at all), and axe-scoped tests for defects found live
-// while building this suite — D-88 and the already-recorded
-// `--lp-ink-tertiary` AA gap are still pinned; D-87 (below) is fixed and its
-// test is a real regression guard now, not a pin — kept out of the general
-// scans above (via KNOWN_EXCLUSIONS) so they don't mask an unrelated
-// regression on every page that happens to share the same editor or caption
-// style. See docs/reports/4-4.2.md for the full evidence behind each.
+// at both themes it ships, then a set of `test.fail()`-pinned tests: an
+// interaction test for D-77 and axe-scoped tests for defects found live
+// while building this suite — D-88, D-76's separate nested-interactive ARIA
+// finding, and the already-recorded `--lp-ink-tertiary` AA gap are still
+// pinned; D-76's own keydown-bubbling interaction tests and D-87 (below) are
+// fixed and their tests are real regression guards now, not pins — kept out
+// of the general scans above (via KNOWN_EXCLUSIONS) so they don't mask an
+// unrelated regression on every page that happens to share the same editor,
+// row, or caption style. See docs/reports/4-4.2.md for the full evidence
+// behind each.
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "fs";
 import { join } from "path";
@@ -258,13 +259,13 @@ test.describe("Accessibility: settings", () => {
   });
 });
 
-// D-76 and D-77 are real, already-reproduced defects (docs/reports/4-4.1.md,
-// PLAN.md's defect register), each owned by `frontend-features`, not
-// `qa-e2e`. These two tests encode the *fixed* behaviour and are marked
-// `test.fail()` so the suite stays green today while still failing loudly,
-// for the right reason, the day someone attempts the fix without removing
-// the annotation. Both are deterministic (a bounded network wait / a bounded
-// click timeout against a static layout bug), not races against real time.
+// D-76 (the keydown-bubbling half) is fixed: ResumeListRow's onKeyDown now
+// ignores any keydown whose target is not the row itself
+// (`event.target === event.currentTarget`), so a focused descendant control's
+// own native Enter-triggers-click behaviour is no longer suppressed. These
+// two tests are real regression guards now, not pins. (The separate
+// nested-interactive ARIA finding folded into D-76 further down is still
+// pinned — this fix does not restructure the row's ARIA pattern.)
 test.describe("Keyboard operability: Library row confirmations (D-76)", () => {
   test.beforeEach(async ({ request }) => {
     test.setTimeout(60_000);
@@ -274,25 +275,9 @@ test.describe("Keyboard operability: Library row confirmations (D-76)", () => {
   });
 
   test("pressing Enter on the row's rename icon opens the rename dialog", async ({ page }) => {
-    test.fail(
-      true,
-      "D-76, more fundamental than the original report's framing (which described the " +
-        "Confirm/submit action inside an already-open dialog being swallowed): the dialog " +
-        "never even OPENS via keyboard from a Library row. ResumeListRow's onKeyDown listens " +
-        "on the row itself, so it also catches the Enter keydown bubbling up from a focused " +
-        "descendant control — the row's own rename or delete icon button — before that " +
-        "button's native Enter-triggers-click default action can fire. It calls " +
-        "preventDefault() unconditionally (suppressing the click Radix's DialogTrigger needs " +
-        "to open) and *also* fires the row's own onSelect(), which is meant for the row " +
-        "itself, not its action buttons. Confirmed live: `rename-input` never appears " +
-        "(`element(s) not found`) after focusing `rename-resume` and pressing Enter — no " +
-        "dialog opens at all. Remove test.fail() once frontend-features scopes the row's " +
-        "handler to `event.target === event.currentTarget`.",
-    );
-
     await page.goto("/");
     await page.locator("[data-testid=nav-library]").click();
-    // Reach and (attempt to) open the dialog by keyboard only, never a click.
+    // Reach and open the dialog by keyboard only, never a click.
     await page.locator("[data-testid=rename-resume]").focus();
     await page.keyboard.press("Enter");
 
@@ -302,15 +287,6 @@ test.describe("Keyboard operability: Library row confirmations (D-76)", () => {
   test("pressing Enter on the row's delete icon opens the delete confirmation", async ({
     page,
   }) => {
-    test.fail(
-      true,
-      "D-76, the same root cause as the rename case above, on the delete icon instead: " +
-        "ResumeListRow's onKeyDown intercepts the bubbled Enter before the delete button's " +
-        "native click-synthesis fires, so `[role=\"alertdialog\"]` never appears. Remove " +
-        "test.fail() once frontend-features scopes the row's handler to " +
-        "`event.target === event.currentTarget`.",
-    );
-
     await page.goto("/");
     await page.locator("[data-testid=nav-library]").click();
     await page.locator("[data-testid=delete-resume]").focus();
