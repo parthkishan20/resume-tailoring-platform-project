@@ -194,7 +194,7 @@ Copy `.env.example` to `.env` and set at least the API key. Every variable below
 | Variable | Default | Description |
 |---|---|---|
 | `OPENROUTER_API_KEY` | none | **Required** unless `LLM_MOCK=true` or `LLM_MODEL` names a bare OpenAI model (see below). Get one at [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys). |
-| `LLM_MODEL` | `openrouter/free` | Model used for generation, evaluation, chat, and PDF import. |
+| `LLM_MODEL` | `openrouter/openai/gpt-oss-120b` | Model used for generation, evaluation, chat, and PDF import. Must be a real OpenRouter slug; an unknown one fails every call with a provider 404. |
 | `OPENAI_API_KEY` | none | Only read when `LLM_MODEL` does **not** start with `openrouter/` (e.g. a bare `gpt-4o-mini`). |
 | `LLM_MOCK` | `false` | `true` runs against a deterministic stub, no key or network call needed. Used by the test suites and `LLM_MOCK=true` local runs. |
 | `DB_PATH` | `/app/db/resumedb.db` | SQLite database path. |

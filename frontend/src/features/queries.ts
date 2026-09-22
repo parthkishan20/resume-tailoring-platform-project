@@ -288,8 +288,10 @@ const LLM_USAGE_POLL_MS = 15_000;
 
 /**
  * How much of the provider's per-minute/per-day rate limit this process has
- * used, for the counter next to the assistant (openrouter/free: 20/minute,
- * 50/day).
+ * used, for the counter next to the assistant. The limits it is compared
+ * against are whatever `LLM_RATE_LIMIT_PER_MINUTE`/`_PER_DAY` are set to
+ * (20/minute, 50/day by default -- OpenRouter's free-tier numbers, from when
+ * the default model was a free one).
  *
  * Polled rather than invalidated after each LLM-triggering mutation: Tailor,
  * Evaluate, PDF import and Chat all consume the same global quota (it is not

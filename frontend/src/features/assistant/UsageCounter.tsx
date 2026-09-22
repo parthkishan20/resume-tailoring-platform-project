@@ -7,10 +7,11 @@ import { useLlmUsage } from "@/features/queries";
 const NEAR_LIMIT_RATIO = 0.8;
 
 /**
- * The free-tier rate-limit counter, next to the assistant.
+ * The provider rate-limit counter, next to the assistant.
  *
- * `openrouter/free` (ADR 0008) allows a fixed number of requests per minute
- * and per UTC calendar day, shared across every surface that calls the LLM
+ * Counts requests against a fixed per-minute and per-UTC-calendar-day budget
+ * (`LLM_RATE_LIMIT_PER_MINUTE`/`_PER_DAY`), shared across every surface that
+ * calls the LLM
  * (Chat, Tailor, Evaluate, PDF import) — not scoped to this panel, which is
  * why it says so in the tooltip rather than implying "messages left."
  *

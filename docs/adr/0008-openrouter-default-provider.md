@@ -1,6 +1,6 @@
 # 0008. Default LLM provider switched from OpenAI to OpenRouter
 
-- **Status:** Accepted
+- **Status:** Accepted (amended 2026-09-22, see *Amendment* below)
 - **Date:** 2026-09-22
 - **Addresses:** B-02's neighbouring context (`PLAN.md` §6); resolves ADR 0001's "genuine second
   provider requires editing the adapter" limitation for OpenRouter specifically
@@ -47,3 +47,28 @@ only place OpenAI was hardcoded was `Settings.llm_api_key`.
   shape, a `chat_messages` schema migration, and rebuilding history in
   `domain/assistant.py::run_assistant_turn` — deferred as a separate, larger decision if the model
   behind `openrouter/free` turns out to need it for good multi-turn quality.
+
+## Amendment (2026-09-22): the chosen default slug did not exist
+
+The default this ADR settled on, `openrouter/free`, is not a real OpenRouter model. The provider
+answers `404 {"error":{"message":"No endpoints available for openrouter/free"}}`, so a fresh
+install passed `validate_startup_settings` (which only checks that a key is non-empty), booted
+green, and then failed *every* generation, evaluation, chat turn and PDF import. No test caught it:
+the suite runs entirely against `LLM_MOCK`'s stub, which never resolves a model name.
+
+The default is now `openrouter/openai/gpt-oss-120b`, verified end to end against the live provider
+(strict `json_schema` accepted, full tailoring pipeline to a rendered PDF).
+
+Two things learned while picking it, both worth knowing before changing this default again:
+
+- **Reasoning models can starve their own output.** Reasoning tokens are drawn from the same
+  `LLM_MAX_TOKENS` budget as the answer. At the old 8192 default, `openai/gpt-oss-20b` spent ~92%
+  of its completion on reasoning and returned empty content (`finish_reason=stop`), and
+  `inclusionai/ling-3.0-flash` was truncated mid-thought (`finish_reason=length`). Both surfaced as
+  `LLM_EMPTY_RESPONSE`, which reads like a provider fault and is not one.
+- **A cheaper per-token price is not a cheaper pass.** Measured over the real two-call pipeline,
+  `ling-3.0-flash` ($0.021/$0.063 per M) used 21,646 completion tokens against gpt-oss-120b's 4,629
+  ($0.03/$0.17 per M) — 1.6x *more* expensive per resume and 3.2x slower. Compare measured
+  cost-per-pass, not list price.
+
+`LLM_MODEL` is still the only knob; nothing about the decision above changes.

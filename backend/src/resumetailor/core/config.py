@@ -51,7 +51,13 @@ class Settings(BaseSettings):
     # matches `LLM_MODEL`.
     OPENAI_API_KEY: SecretStr = SecretStr("")
     OPENROUTER_API_KEY: SecretStr = SecretStr("")
-    LLM_MODEL: str = "openrouter/free"
+    # `openrouter/free` was the default until it was found to be a slug that
+    # does not exist: OpenRouter answers `404 No endpoints available`, so a
+    # fresh install booted green and then failed every generation, evaluation,
+    # chat turn and PDF import. Nothing caught it because the whole suite runs
+    # against the stub. This default is a real slug, verified end to end
+    # against the live provider.
+    LLM_MODEL: str = "openrouter/openai/gpt-oss-120b"
     LLM_MOCK: bool = False
 
     # What bounds one provider call (PLAN.md D-46). The adapter reads these
@@ -63,9 +69,12 @@ class Settings(BaseSettings):
     LLM_MAX_TOKENS: int = Field(default=8192, gt=0)
     LLM_STREAM_STALL_TIMEOUT_S: float = Field(default=30.0, gt=0)
 
-    # What OpenRouter's free tier (the `openrouter/free` default) allows, for
-    # the usage counter shown next to the assistant. Not enforced here — the
-    # provider is the one that actually rejects a call over the limit — these
+    # What the deployment's plan allows, for the usage counter shown next to
+    # the assistant. These were OpenRouter's free-tier numbers, chosen when
+    # the default model was a free one; the default is a paid slug now, so
+    # they label a limit this deployment may not actually be under. Not
+    # enforced here — the provider is the one that actually rejects a call
+    # over the limit — these
     # only label what `GET /api/llm/usage`'s counts are being compared
     # against, so a deployment on a different plan or provider can correct
     # them without a code change.

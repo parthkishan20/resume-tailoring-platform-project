@@ -49,7 +49,7 @@ three the user is expected to set.
 |---|---|---|
 | `OPENROUTER_API_KEY` | empty `SecretStr` | The provider credential read when `LLM_MODEL` starts with `openrouter/` (the default). **Required** in that case unless `LLM_MOCK=true`: an empty value fails the boot with a `ConfigurationError` rather than failing the user's first generation. Passed explicitly on each provider call, never written to `os.environ` (D-49), so the `rendercv` child process never inherits it |
 | `OPENAI_API_KEY` | empty `SecretStr` | The provider credential read instead, only when `LLM_MODEL` does **not** start with `openrouter/` (e.g. a bare `gpt-4o-mini`). Same required-unless-mocked rule and the same D-49 handling |
-| `LLM_MODEL` | `openrouter/free` | The one model used for all four workloads: chat, both generation passes, evaluation and PDF import. There is no per-task override. Its provider prefix selects which key above is read (`core/config.py`'s `llm_api_key`) |
+| `LLM_MODEL` | `openrouter/openai/gpt-oss-120b` | The one model used for all four workloads: chat, both generation passes, evaluation and PDF import. There is no per-task override. Its provider prefix selects which key above is read (`core/config.py`'s `llm_api_key`) |
 | `LLM_MOCK` | `false` | When true, the whole backend object is swapped for the deterministic simulator. No network, no API key needed. Used by the test stack and CI |
 | `DB_PATH` | `/app/db/resumedb.db` | Absolute path to the SQLite file. The default is container-absolute and wrong for every host-local run |
 | `PDFS_DIR` | `/app/pdfs` | Directory for generated PDFs. Same caveat |
