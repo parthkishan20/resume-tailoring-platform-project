@@ -95,8 +95,11 @@ Thumbs.db
 skills-lock.json
 .claude/skills/
 
-# Personal resume data — contains real PII, must never be committed
-planning/master-resume.yaml
+# Personal resume data — contains real PII, must never be committed. The
+# glob (not just the exact filename) covers copies/backups like
+# master-resume-copy.yaml, which is real PII too and isn't the same file
+# every editor or tool names identically.
+planning/master-resume*.yaml
 *.personal.yaml
 
 # Agent scratch directory from the 2026-07 build. The markdown briefs and
