@@ -377,6 +377,30 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "LLMUsageResponse": {
+        "description": "How much of the provider's rate limit this process has used, right now.",
+        "properties": {
+          "day_count": {
+            "title": "Day Count",
+            "type": "integer"
+          },
+          "day_limit": {
+            "title": "Day Limit",
+            "type": "integer"
+          },
+          "minute_count": {
+            "title": "Minute Count",
+            "type": "integer"
+          },
+          "minute_limit": {
+            "title": "Minute Limit",
+            "type": "integer"
+          }
+        },
+        "required": ["minute_count", "minute_limit", "day_count", "day_limit"],
+        "title": "LLMUsageResponse",
+        "type": "object"
+      },
       "MasterResume": {
         "description": "The one canonical resume document, per user.",
         "properties": {
@@ -1054,6 +1078,24 @@
           }
         },
         "summary": "Ready"
+      }
+    },
+    "/api/llm/usage": {
+      "get": {
+        "operationId": "get_usage_api_llm_usage_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LLMUsageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Usage"
       }
     },
     "/api/master-resume": {

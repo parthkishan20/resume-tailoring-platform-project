@@ -12,7 +12,7 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import type { ResumeUpdateBody } from "@/lib/api";
+import type { LLMUsage, ResumeUpdateBody } from "@/lib/api";
 import type {
   ChatMessage,
   GeneratedResume,
@@ -67,6 +67,7 @@ export const queryKeys = {
   rules: ["rules"] as const,
   systemPrompt: ["system-prompt"] as const,
   chatHistory: ["chat", "history"] as const,
+  llmUsage: ["llm-usage"] as const,
 };
 
 export interface ResumeListParams {
@@ -279,6 +280,28 @@ export function useChatHistory(): UseInfiniteQueryResult<InfiniteData<ChatMessag
     initialPageParam: undefined as number | undefined,
     getNextPageParam: (lastPage) =>
       lastPage.length === CHAT_PAGE_SIZE ? lastPage[0]?.id : undefined,
+  });
+}
+
+/** How often {@link useLlmUsage} polls, in milliseconds. */
+const LLM_USAGE_POLL_MS = 15_000;
+
+/**
+ * How much of the provider's per-minute/per-day rate limit this process has
+ * used, for the counter next to the assistant (openrouter/free: 20/minute,
+ * 50/day).
+ *
+ * Polled rather than invalidated after each LLM-triggering mutation: Tailor,
+ * Evaluate, PDF import and Chat all consume the same global quota (it is not
+ * scoped to any one of them), so polling one cheap indexed count is simpler
+ * than wiring an invalidation into every call site that can move it.
+ */
+export function useLlmUsage(): UseQueryResult<LLMUsage> {
+  return useQuery({
+    queryKey: queryKeys.llmUsage,
+    queryFn: ({ signal }) => api.getLlmUsage({ signal }),
+    refetchInterval: LLM_USAGE_POLL_MS,
+    refetchOnWindowFocus: true,
   });
 }
 

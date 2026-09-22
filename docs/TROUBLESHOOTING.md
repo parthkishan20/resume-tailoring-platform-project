@@ -184,7 +184,7 @@ app's own origin and rendered by the browser's built-in viewer.
 
 **Symptom.** Every LLM-backed action fails. On the three streaming routes you get **HTTP 200**
 with `event: error` and `"code": "LLM_AUTH_ERROR"`, and the message
-`Invalid LLM API key (check OPENAI_API_KEY)`. On `POST /api/master-resume/import` you get a
+`Invalid LLM API key (check OPENAI_API_KEY / OPENROUTER_API_KEY)`. On `POST /api/master-resume/import` you get a
 genuine **HTTP 500** with the same code, because that route is not a stream.
 
 Note that `LLMAuthError` maps to **500**, not 401 or 502. A server misconfiguration is presented
@@ -193,23 +193,26 @@ as an internal error.
 **Cause.** The key is wrong, expired, or scoped away from the model in `LLM_MODEL`.
 
 A **missing** key no longer produces this symptom. Since task 1.1, `validate_startup_settings`
-fails the boot with a `ConfigurationError` naming `OPENAI_API_KEY` whenever `LLM_MOCK` is false
-and the key is empty. A container with no key at all now refuses to start rather than reporting
-itself healthy and failing at the first provider call. If you want to run with no key, set
-`LLM_MOCK=true`.
+fails the boot with a `ConfigurationError` naming whichever key `LLM_MODEL` needs
+(`OPENROUTER_API_KEY` for the default `openrouter/...` models, `OPENAI_API_KEY` otherwise)
+whenever `LLM_MOCK` is false and that key is empty. A container with no key at all now refuses to
+start rather than reporting itself healthy and failing at the first provider call. If you want to
+run with no key, set `LLM_MOCK=true`.
 
 **Fix.**
 
-1. Confirm `.env` exists at the repo root and contains a real `OPENAI_API_KEY`.
-   `docker-compose.yml` loads it via `env_file:` and **hard-fails if the file is absent**, so a
-   missing `.env` shows up as a compose error rather than this symptom.
-2. Confirm the key reached the container: `docker compose exec app printenv | grep -c OPENAI` (do
-   not print the value).
+1. Confirm `.env` exists at the repo root and contains a real key for whichever provider
+   `LLM_MODEL` points at. `docker-compose.yml` loads it via `env_file:` and **hard-fails if the
+   file is absent**, so a missing `.env` shows up as a compose error rather than this symptom.
+2. Confirm the key reached the container: `docker compose exec app printenv | grep -c OPENROUTER`
+   (or `OPENAI`, matching your `LLM_MODEL`; do not print the value).
 3. Settings are cached with `lru_cache` at process level. **Changing `.env` requires a container
    restart**, not just a page reload.
-4. Check `LLM_MODEL`. Only OpenAI-shaped auth is wired: the adapter unconditionally sets
-   `OPENAI_API_KEY` regardless of what `LLM_MODEL` names, so pointing it at an Anthropic or
-   Gemini model routes correctly in litellm and then fails auth.
+4. Check `LLM_MODEL`. Only two providers are wired: a model string starting with `openrouter/`
+   reads `OPENROUTER_API_KEY`, anything else reads `OPENAI_API_KEY` (`core/config.py`'s
+   `llm_api_key`). Pointing `LLM_MODEL` at a third provider (e.g. a bare `anthropic/...` or
+   `gemini/...` model) routes correctly in litellm and then fails auth, because neither key is
+   the right one for it.
 
 **Related symptom, different cause.** `"code": "LLM_UNAVAILABLE"` at HTTP 503 is a rate limit, a
 provider outage or a network failure. There is **no retry and no backoff**, so a single rate-limit

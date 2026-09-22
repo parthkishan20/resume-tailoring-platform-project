@@ -45,9 +45,13 @@ STATIC_DIR = BACKEND_ROOT / "static"
 class Settings(BaseSettings):
     """Process configuration, read from the environment and from ``.env``."""
 
-    # Empty rather than "mock-key": an unset key must be detectable.
+    # Empty rather than "mock-key": an unset key must be detectable. Both keys
+    # are declared so a deployment can point `LLM_MODEL` at either provider
+    # without losing the other's key; `llm_api_key` below picks the one that
+    # matches `LLM_MODEL`.
     OPENAI_API_KEY: SecretStr = SecretStr("")
-    LLM_MODEL: str = "gpt-4o-mini"
+    OPENROUTER_API_KEY: SecretStr = SecretStr("")
+    LLM_MODEL: str = "openrouter/free"
     LLM_MOCK: bool = False
 
     # What bounds one provider call (PLAN.md D-46). The adapter reads these
@@ -58,6 +62,15 @@ class Settings(BaseSettings):
     LLM_RETRY_BACKOFF_S: float = Field(default=0.5, gt=0)
     LLM_MAX_TOKENS: int = Field(default=8192, gt=0)
     LLM_STREAM_STALL_TIMEOUT_S: float = Field(default=30.0, gt=0)
+
+    # What OpenRouter's free tier (the `openrouter/free` default) allows, for
+    # the usage counter shown next to the assistant. Not enforced here — the
+    # provider is the one that actually rejects a call over the limit — these
+    # only label what `GET /api/llm/usage`'s counts are being compared
+    # against, so a deployment on a different plan or provider can correct
+    # them without a code change.
+    LLM_RATE_LIMIT_PER_MINUTE: int = Field(default=20, gt=0)
+    LLM_RATE_LIMIT_PER_DAY: int = Field(default=50, gt=0)
 
     DB_PATH: str = "/app/db/resumedb.db"
     PDFS_DIR: str = "/app/pdfs"
@@ -106,8 +119,19 @@ class Settings(BaseSettings):
 
     @property
     def llm_api_key(self) -> str:
-        """The provider key, unwrapped. The only place the secret is read."""
-        return self.OPENAI_API_KEY.get_secret_value()
+        """The provider key for `LLM_MODEL`, unwrapped.
+
+        LiteLLM's routing convention is the provider prefix on the model
+        string itself (``openrouter/...`` vs a bare OpenAI model name like
+        ``gpt-4o-mini``), so that prefix is what selects which secret to read.
+        The only place either secret is read.
+        """
+        key = (
+            self.OPENROUTER_API_KEY
+            if self.LLM_MODEL.startswith("openrouter/")
+            else self.OPENAI_API_KEY
+        )
+        return key.get_secret_value()
 
 
 @lru_cache(maxsize=1)
@@ -123,9 +147,14 @@ def validate_startup_settings(settings: Settings) -> None:
             provider but has no key to call it with.
     """
     if not settings.LLM_MOCK and not settings.llm_api_key:
+        var = (
+            "OPENROUTER_API_KEY"
+            if settings.LLM_MODEL.startswith("openrouter/")
+            else "OPENAI_API_KEY"
+        )
         msg = (
-            "OPENAI_API_KEY is not set. Set it in the environment or in "
-            "backend/.env, or set LLM_MOCK=true to run against the "
-            "deterministic stub."
+            f"{var} is not set for LLM_MODEL={settings.LLM_MODEL!r}. Set it "
+            "in the environment or in backend/.env, or set LLM_MOCK=true to "
+            "run against the deterministic stub."
         )
         raise ConfigurationError(msg)

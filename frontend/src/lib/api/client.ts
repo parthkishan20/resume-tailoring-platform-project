@@ -25,6 +25,7 @@ import {
   generatedResumeSchema,
   generationRuleListSchema,
   healthSchema,
+  llmUsageSchema,
   masterResumeSchema,
   resumePageSchema,
   systemPromptSchema,
@@ -32,6 +33,7 @@ import {
   type GeneratedResume,
   type GenerationRule,
   type Health,
+  type LLMUsage,
   type MasterResume,
   type ResumePage,
   type ResumeUpdateBody,
@@ -47,6 +49,10 @@ export const api = {
   /** Liveness. Says nothing about the database or the provider. */
   getHealth: (options?: RequestOptions): Promise<Health> =>
     requestJson("/api/health", healthSchema, bare("GET", options)),
+
+  /** How much of the provider's rate limit this process has used, right now. */
+  getLlmUsage: (options?: RequestOptions): Promise<LLMUsage> =>
+    requestJson("/api/llm/usage", llmUsageSchema, bare("GET", options)),
 
   /**
    * The master document, or `null` when the user has not imported one.

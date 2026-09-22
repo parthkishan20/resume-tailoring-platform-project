@@ -387,8 +387,8 @@ There are **two**, and the client has to handle both.
 | `PDFExtractError` | 422 | `PDF_EXTRACT_FAILED` |
 
 `LLMAuthError` mapping to **500** is worth noting: a server misconfiguration is presented as an
-internal error, carrying the literal text "Invalid LLM API key (check OPENAI_API_KEY)" to the
-client.
+internal error, carrying the literal text "Invalid LLM API key (check OPENAI_API_KEY /
+OPENROUTER_API_KEY)" to the client.
 
 **Shape B, from every `HTTPException`:**
 

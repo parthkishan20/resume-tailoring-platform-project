@@ -8,6 +8,7 @@ import { queryKeys } from "@/features/queries";
 import { api } from "@/lib/api";
 import type { MasterResume } from "@/lib/types";
 import { Chat } from "./Chat";
+import { UsageCounter } from "./UsageCounter";
 
 /**
  * Assistant (DESIGN-SYSTEM.md 3.2): chat, docked rather than overlaying, so
@@ -47,22 +48,25 @@ export function AssistantPanel({ masterResume: _masterResume }: { masterResume: 
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-lp-panel-header shrink-0 items-center justify-between gap-lp-2 border-b border-lp-rule px-lp-4">
         <h2 className="font-lp-sans text-lp-heading font-semibold text-lp-ink">Assistant</h2>
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <IconButton
-              label="Clear conversation"
-              icon={<Eraser size={16} />}
-              size="sm"
-              data-testid="chat-clear"
+        <div className="flex items-center gap-lp-2">
+          <UsageCounter />
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <IconButton
+                label="Clear conversation"
+                icon={<Eraser size={16} />}
+                size="sm"
+                data-testid="chat-clear"
+              />
+            </AlertDialogTrigger>
+            <AlertDialogContent
+              title="Clear the conversation?"
+              description="The message history is deleted. Any edits the assistant already made to your resume are kept."
+              confirmLabel="Clear"
+              onConfirm={() => void clearConversation()}
             />
-          </AlertDialogTrigger>
-          <AlertDialogContent
-            title="Clear the conversation?"
-            description="The message history is deleted. Any edits the assistant already made to your resume are kept."
-            confirmLabel="Clear"
-            onConfirm={() => void clearConversation()}
-          />
-        </AlertDialog>
+          </AlertDialog>
+        </div>
       </div>
       <div className="min-h-0 flex-1">
         <Chat key={chatEpoch} />

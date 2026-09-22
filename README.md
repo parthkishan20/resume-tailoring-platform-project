@@ -81,7 +81,7 @@ Light, dark, or system, set from a settings dialog and applied instantly across 
 git clone https://github.com/your-username/resume-tailoring-platform.git
 cd resume-tailoring-platform
 cp .env.example .env
-# edit .env and set OPENAI_API_KEY=sk-...
+# edit .env and set OPENROUTER_API_KEY=sk-or-...
 
 # 2. Build and run
 docker compose up --build
@@ -166,7 +166,7 @@ never be pointed at your own app.
 | Image tag | `resumetailor` | `resumetailor-e2e` |
 | Host port | 8000 (loopback only) | 18173 (`E2E_HOST_PORT` to change; 8000 is rejected) |
 | Storage | persistent volumes `resumedb-data`, `resumepdf-data` | tmpfs, discarded with the container |
-| LLM | your real `OPENAI_API_KEY` from `.env` | `LLM_MOCK=true`, no `.env` |
+| LLM | your real `OPENROUTER_API_KEY` from `.env` | `LLM_MOCK=true`, no `.env` |
 
 Both stacks can run at the same time; they do not collide.
 
@@ -193,8 +193,9 @@ Copy `.env.example` to `.env` and set at least the API key. Every variable below
 
 | Variable | Default | Description |
 |---|---|---|
-| `OPENAI_API_KEY` | none | **Required** unless `LLM_MOCK=true`. Any OpenAI-compatible API key. |
-| `LLM_MODEL` | `gpt-4o-mini` | Model used for generation, evaluation, chat, and PDF import. |
+| `OPENROUTER_API_KEY` | none | **Required** unless `LLM_MOCK=true` or `LLM_MODEL` names a bare OpenAI model (see below). Get one at [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys). |
+| `LLM_MODEL` | `openrouter/free` | Model used for generation, evaluation, chat, and PDF import. |
+| `OPENAI_API_KEY` | none | Only read when `LLM_MODEL` does **not** start with `openrouter/` (e.g. a bare `gpt-4o-mini`). |
 | `LLM_MOCK` | `false` | `true` runs against a deterministic stub, no key or network call needed. Used by the test suites and `LLM_MOCK=true` local runs. |
 | `DB_PATH` | `/app/db/resumedb.db` | SQLite database path. |
 | `PDFS_DIR` | `/app/pdfs` | Directory for generated PDF files. |
@@ -202,7 +203,7 @@ Copy `.env.example` to `.env` and set at least the API key. Every variable below
 | `LOG_FORMAT` | `json` | `json` for structured logs (ship them somewhere); `text` for a human reading the terminal. |
 | `API_DOCS_ENABLED` | `true` | Serves `/docs`, `/redoc`, and `/openapi.json`. Set `false` to remove all three from the running app. |
 
-LiteLLM is used under the hood, so `OPENAI_API_KEY` works with any compatible provider, set `LLM_MODEL` to the appropriate model string for your provider.
+LiteLLM is used under the hood, so any provider it supports works: set `LLM_MODEL` to the provider's model string (`openrouter/<model>`, a bare OpenAI model name, `anthropic/<model>`, ...) and the matching key. Only `OPENROUTER_API_KEY` and `OPENAI_API_KEY` are wired up as named settings today; `LLM_MODEL`'s `openrouter/` prefix is what picks between them (`core/config.py`'s `llm_api_key`).
 
 **Advanced tuning**, all optional with defaults chosen to be safe for a single-user deployment; see `backend/src/resumetailor/core/config.py` for the authoritative list and the reasoning behind each default.
 

@@ -89,8 +89,9 @@ uv run uvicorn resumetailor.main:app --reload --port 8000
 `uv sync` installs the dependency tree but not this package. The Dockerfile sets the same
 variable, and `[tool.pytest.ini_options] pythonpath` is how pytest gets it.
 
-`LLM_MOCK=true` is not just convenience: without it, startup validation fails the boot when
-`OPENAI_API_KEY` is empty.
+`LLM_MOCK=true` is not just convenience: without it, startup validation fails the boot when the
+key `LLM_MODEL` needs is empty (`OPENROUTER_API_KEY` by default; `OPENAI_API_KEY` if `LLM_MODEL`
+does not start with `openrouter/`).
 
 `DB_PATH` and `PDFS_DIR` default to container-absolute paths (`/app/db/resumedb.db`, `/app/pdfs`)
 and **must** be overridden for any host-local run.

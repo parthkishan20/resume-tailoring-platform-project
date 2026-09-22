@@ -135,6 +135,70 @@ async def test_litellm_adapter_passes_key_per_call_not_via_environ(monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_litellm_adapter_calls_on_request_once_per_complete():
+    """The rate-limit counter's hook fires once per logical call, before it."""
+    calls: list[str] = []
+
+    async def on_request() -> None:
+        calls.append("recorded")
+
+    adapter = LiteLLMAdapter(
+        model="openrouter/test/model", api_key="key", on_request=on_request
+    )
+    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="hi"))]
+        )
+        await adapter.complete([{"role": "user", "content": "hi"}])
+
+    assert calls == ["recorded"]
+
+
+@pytest.mark.anyio
+async def test_litellm_adapter_calls_on_request_before_stream_is_sent():
+    """A stream nobody iterates never opens a connection, so it never counts."""
+    calls: list[str] = []
+
+    async def on_request() -> None:
+        calls.append("recorded")
+
+    adapter = LiteLLMAdapter(
+        model="openrouter/test/model", api_key="key", on_request=on_request
+    )
+    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="hi"))]
+        )
+
+        stream = await adapter.stream([{"role": "user", "content": "hi"}])
+        assert calls == []  # not sent yet — nobody has iterated
+
+        async for _ in stream:
+            pass
+
+    assert calls == ["recorded"]
+
+
+@pytest.mark.anyio
+async def test_litellm_adapter_on_request_failure_does_not_break_the_call():
+    """A broken counter must not be able to fail the user's actual generation."""
+
+    async def on_request() -> None:
+        raise RuntimeError("db is down")
+
+    adapter = LiteLLMAdapter(
+        model="openrouter/test/model", api_key="key", on_request=on_request
+    )
+    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="hi"))]
+        )
+        result = await adapter.complete([{"role": "user", "content": "hi"}])
+
+    assert result == "hi"
+
+
+@pytest.mark.anyio
 async def test_rendercv_adapter_maps_nonzero_exit_to_render_error():
     adapter = RenderCVAdapter()
     proc_mock = MagicMock()

@@ -41,6 +41,13 @@ export const healthSchema = z.object({
   status: z.literal("ok"),
 });
 
+export const llmUsageSchema = z.object({
+  minute_count: z.number(),
+  minute_limit: z.number(),
+  day_count: z.number(),
+  day_limit: z.number(),
+});
+
 export const masterResumeSchema = z.object({
   id: z.number(),
   user_id: z.string(),
@@ -142,6 +149,7 @@ export const evaluateDoneFrameSchema = z.object({ result: evaluationResultSchema
 // -- types -----------------------------------------------------------------
 
 export type Health = z.infer<typeof healthSchema>;
+export type LLMUsage = z.infer<typeof llmUsageSchema>;
 export type MasterResume = z.infer<typeof masterResumeSchema>;
 export type GeneratedResume = z.infer<typeof generatedResumeSchema>;
 export type ResumeSummary = z.infer<typeof resumeSummarySchema>;
@@ -207,6 +215,7 @@ type Exact<A, B> =
  */
 const contractIsInSync: {
   health: Exact<Health, Schemas["HealthResponse"]>;
+  llmUsage: Exact<LLMUsage, Schemas["LLMUsageResponse"]>;
   masterResume: Exact<MasterResume, Schemas["MasterResume"]>;
   generatedResume: Exact<GeneratedResume, Schemas["GeneratedResume"]>;
   resumeSummary: Exact<ResumeSummary, Schemas["ResumeSummary"]>;
@@ -225,6 +234,7 @@ const contractIsInSync: {
   evaluateDoneFrame: Exact<EvaluateDoneFrame, Schemas["EvaluateDoneFrame"]>;
 } = {
   health: true,
+  llmUsage: true,
   masterResume: true,
   generatedResume: true,
   resumeSummary: true,

@@ -16,7 +16,7 @@ Companion documents: [`ARCHITECTURE.md`](./ARCHITECTURE.md) (how it works),
 
 ```bash
 cp .env.example .env
-# edit .env and set OPENAI_API_KEY
+# edit .env and set OPENROUTER_API_KEY
 docker compose up --build
 ```
 
@@ -47,8 +47,9 @@ three the user is expected to set.
 
 | Variable | Default | What it does |
 |---|---|---|
-| `OPENAI_API_KEY` | empty `SecretStr` | The provider credential. **Required** unless `LLM_MOCK=true`: an empty value fails the boot with a `ConfigurationError` rather than failing the user's first generation. Still written into `os.environ` from the `LiteLLMAdapter` constructor, which means the `rendercv` child process inherits it (D-49) |
-| `LLM_MODEL` | `gpt-4o-mini` | The one model used for all four workloads: chat, both generation passes, evaluation and PDF import. There is no per-task override |
+| `OPENROUTER_API_KEY` | empty `SecretStr` | The provider credential read when `LLM_MODEL` starts with `openrouter/` (the default). **Required** in that case unless `LLM_MOCK=true`: an empty value fails the boot with a `ConfigurationError` rather than failing the user's first generation. Passed explicitly on each provider call, never written to `os.environ` (D-49), so the `rendercv` child process never inherits it |
+| `OPENAI_API_KEY` | empty `SecretStr` | The provider credential read instead, only when `LLM_MODEL` does **not** start with `openrouter/` (e.g. a bare `gpt-4o-mini`). Same required-unless-mocked rule and the same D-49 handling |
+| `LLM_MODEL` | `openrouter/free` | The one model used for all four workloads: chat, both generation passes, evaluation and PDF import. There is no per-task override. Its provider prefix selects which key above is read (`core/config.py`'s `llm_api_key`) |
 | `LLM_MOCK` | `false` | When true, the whole backend object is swapped for the deterministic simulator. No network, no API key needed. Used by the test stack and CI |
 | `DB_PATH` | `/app/db/resumedb.db` | Absolute path to the SQLite file. The default is container-absolute and wrong for every host-local run |
 | `PDFS_DIR` | `/app/pdfs` | Directory for generated PDFs. Same caveat |
@@ -64,8 +65,8 @@ Notes that will bite otherwise:
   `PDFS_DIR` are writable before the app reports itself healthy.
 - Settings are read once and cached with `lru_cache`. Changing an environment variable requires
   a process restart.
-- `.env.example` documents three variables and predates `LOG_LEVEL`, `LOG_FORMAT` and the
-  now-required `OPENAI_API_KEY`. The table above is the authoritative list.
+- `.env.example` documents the required key plus `LLM_MODEL` and `LLM_MOCK`; the table above is
+  the authoritative list for everything else, including `LOG_LEVEL` and `LOG_FORMAT`.
 
 `docker-compose.yml` loads `.env` wholesale with `env_file:`. `docker-compose.test.yml`
 deliberately uses inline `environment:` with **no `env_file`**, so a real key cannot leak into a

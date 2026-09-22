@@ -49,14 +49,28 @@ class BackendAPI:
 
 def create_real_backend() -> BackendAPI:
     """The production wiring: a real provider, a real renderer, a real PDF reader."""
+    import asyncio  # noqa: PLC0415
+
     from resumetailor.core.config import get_settings  # noqa: PLC0415
+    from resumetailor.db.repositories.llm_requests import record_llm_request  # noqa: PLC0415
     from resumetailor.llm.litellm_adapter import LiteLLMAdapter  # noqa: PLC0415
     from resumetailor.pdf.extract import PyMuPDFAdapter  # noqa: PLC0415
     from resumetailor.rendering.runner import RenderCVAdapter  # noqa: PLC0415
 
     settings = get_settings()
+
+    async def _record_request() -> None:
+        # `record_llm_request` is a blocking sqlite3 write; `on_request` runs
+        # on the event loop (D-05's own rule), so it goes through a thread
+        # like every other repository call.
+        await asyncio.to_thread(record_llm_request, settings.DB_PATH)
+
     return BackendAPI(
-        llm=LiteLLMAdapter(model=settings.LLM_MODEL, api_key=settings.llm_api_key),
+        llm=LiteLLMAdapter(
+            model=settings.LLM_MODEL,
+            api_key=settings.llm_api_key,
+            on_request=_record_request,
+        ),
         pdf_render=RenderCVAdapter(),
         pdf_extract=PyMuPDFAdapter(),
     )

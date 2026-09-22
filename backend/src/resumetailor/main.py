@@ -44,6 +44,7 @@ from resumetailor.api.routers import (
     chat,
     evaluate,
     health,
+    llm_usage,
     master_resume,
     metrics,
     resumes,
@@ -79,6 +80,7 @@ _ROUTER_MODULES = (
     system_prompt,
     evaluate,
     metrics,
+    llm_usage,
 )
 
 

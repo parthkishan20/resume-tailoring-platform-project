@@ -52,7 +52,22 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-_AUTH_MESSAGE = "Invalid LLM API key (check OPENAI_API_KEY)"
+_AUTH_MESSAGE = "Invalid LLM API key (check OPENAI_API_KEY / OPENROUTER_API_KEY)"
+
+#: Called once per outbound provider call — right before it is sent, not
+#: after it succeeds, because a rate limit that is about to be consumed is
+#: consumed whether or not the call goes on to succeed. Async and awaited on
+#: the event loop like everything else in this class, unlike `UsageSink`:
+#: recording a request is a database write (`db.repositories.llm_requests`),
+#: and this codebase's own convention (D-05) is that a blocking call never
+#: runs on the loop directly, so a real sink wraps its write in
+#: `asyncio.to_thread` rather than doing it inline the way the log-line
+#: `UsageSink` default can.
+RequestSink = Callable[[], Awaitable[None]]
+
+
+async def _no_request_sink() -> None:
+    """The default: nobody asked to know, so nothing is recorded."""
 
 
 class _Taxonomy(NamedTuple):
@@ -238,11 +253,13 @@ class LiteLLMAdapter:
         api_key: str,
         profile: LLMProfile | None = None,
         on_usage: UsageSink | None = None,
+        on_request: RequestSink | None = None,
     ) -> None:
         self._model = model
         self._api_key = api_key
         self._profile = profile if profile is not None else LLMProfile.from_settings()
         self._on_usage: UsageSink = on_usage if on_usage is not None else log_usage
+        self._on_request: RequestSink = on_request if on_request is not None else _no_request_sink
 
     # ── Provider call ──────────────────────────────────────────────────────
 
@@ -336,6 +353,18 @@ class LiteLLMAdapter:
         except Exception:
             logger.exception("usage sink raised; this call is missing from the ledger")
 
+    async def _record_request(self) -> None:
+        """Tell the sink a provider call is about to go out.
+
+        Guarded the same way as :meth:`_report_usage`: a rate-limit counter
+        that is missing a row is a stale number in the UI, not a reason to
+        fail the call the user actually asked for.
+        """
+        try:
+            await self._on_request()
+        except Exception:
+            logger.exception("request sink raised; this call is missing from the counter")
+
     # ── The port ───────────────────────────────────────────────────────────
 
     async def complete(
@@ -354,6 +383,7 @@ class LiteLLMAdapter:
         import litellm  # lazy: litellm is about a second to import
 
         kwargs = self._kwargs(messages, response_format)
+        await self._record_request()
         response = await self._attempt(
             "completion", lambda: litellm.acompletion(**kwargs)
         )
@@ -404,6 +434,7 @@ class LiteLLMAdapter:
             kwargs["stream_options"] = options
 
         async def _gen() -> AsyncIterator[StreamEvent]:
+            await self._record_request()
             response = await self._attempt(
                 "stream setup", lambda: litellm.acompletion(**kwargs)
             )

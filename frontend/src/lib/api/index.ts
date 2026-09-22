@@ -56,6 +56,7 @@ export type {
   GeneratedResume,
   GenerationRule,
   Health,
+  LLMUsage,
   MasterResume,
   MasterResumeBody,
   ResumePage,

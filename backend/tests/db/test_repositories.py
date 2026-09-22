@@ -18,6 +18,10 @@ from resumetailor.db.repositories.chat import (
     clear_chat,
     get_chat_messages,
 )
+from resumetailor.db.repositories.llm_requests import (
+    get_llm_request_counts,
+    record_llm_request,
+)
 from resumetailor.db.repositories.master_resume import (
     HISTORY_LIMIT,
     delete_master_resume,
@@ -64,6 +68,7 @@ def test_migrate_creates_all_tables(db_path):
         "chat_messages",
         "generation_rules",
         "system_prompt",
+        "llm_requests",
         "schema_version",
     }
 
@@ -393,4 +398,52 @@ def test_upsert_system_prompt_never_adds_a_row(db_path):
         upsert_system_prompt(db_path, f"prompt {i}")
     with raw(db_path) as conn:
         count = conn.execute("SELECT COUNT(*) FROM system_prompt").fetchone()[0]
+    assert count == 1
+
+
+# --- LLM request log (D13, ADR 0008) ------------------------------------------
+
+
+def test_get_llm_request_counts_starts_at_zero(db_path):
+    assert get_llm_request_counts(db_path) == (0, 0)
+
+
+def test_record_llm_request_counts_toward_both_windows(db_path):
+    record_llm_request(db_path)
+    record_llm_request(db_path)
+    assert get_llm_request_counts(db_path) == (2, 2)
+
+
+def test_get_llm_request_counts_excludes_calls_older_than_a_minute(db_path):
+    record_llm_request(db_path)
+    with raw(db_path) as conn:
+        conn.execute(
+            "UPDATE llm_requests SET created_at = "
+            "strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-90 seconds')"
+        )
+    minute_count, day_count = get_llm_request_counts(db_path)
+    assert minute_count == 0
+    assert day_count == 1  # still today, just not in the last 60 seconds
+
+
+def test_get_llm_request_counts_excludes_calls_from_a_prior_day(db_path):
+    record_llm_request(db_path)
+    with raw(db_path) as conn:
+        conn.execute(
+            "UPDATE llm_requests SET created_at = "
+            "strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-2 days')"
+        )
+    assert get_llm_request_counts(db_path) == (0, 0)
+
+
+def test_record_llm_request_prunes_rows_older_than_its_retention_window(db_path):
+    record_llm_request(db_path)
+    with raw(db_path) as conn:
+        conn.execute(
+            "UPDATE llm_requests SET created_at = "
+            "strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-3 days')"
+        )
+    record_llm_request(db_path)  # triggers the sweep in the same write
+    with raw(db_path) as conn:
+        count = conn.execute("SELECT COUNT(*) FROM llm_requests").fetchone()[0]
     assert count == 1

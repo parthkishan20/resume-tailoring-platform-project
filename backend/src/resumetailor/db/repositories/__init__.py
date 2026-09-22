@@ -15,6 +15,10 @@ from resumetailor.db.repositories.chat import (
     clear_chat,
     get_chat_messages,
 )
+from resumetailor.db.repositories.llm_requests import (
+    get_llm_request_counts,
+    record_llm_request,
+)
 from resumetailor.db.repositories.master_resume import (
     delete_master_resume,
     get_master_resume,
@@ -41,11 +45,13 @@ __all__ = [
     "delete_master_resume",
     "delete_resume",
     "get_chat_messages",
+    "get_llm_request_counts",
     "get_master_resume",
     "get_resume",
     "get_rules",
     "get_system_prompt",
     "list_resumes",
+    "record_llm_request",
     "reset_rules",
     "reset_system_prompt",
     "update_resume",

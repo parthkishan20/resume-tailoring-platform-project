@@ -23,6 +23,11 @@ jest.mock("@/lib/api", () => {
       getResume: jest.fn(),
       getSystemPrompt: jest.fn(),
       getChatHistory: jest.fn(),
+      // Real `AssistantPanel` renders in this tree (`ChatPanel` above is the
+      // superseded component, not this one) and polls this on mount; left
+      // real via the `...actual.api` spread it would hit the same
+      // `fetchMock` this suite asserts `mock.calls[0]` against.
+      getLlmUsage: jest.fn(),
       getPdfUrl: (id: number) => `/api/resumes/${id}/pdf`,
     },
   };
