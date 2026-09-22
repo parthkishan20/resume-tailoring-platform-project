@@ -3,6 +3,7 @@ Adapter-layer test suite.
 
 Async tests use @pytest.mark.anyio (anyio is installed; pytest-asyncio is not).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -27,6 +28,7 @@ from resumetailor.rendering.port import PDFRenderPort
 # Task 1 — Port protocols and exception hierarchy
 # ---------------------------------------------------------------------------
 
+
 def test_exception_hierarchy():
     assert issubclass(LLMAuthError, BackendError)
     assert issubclass(LLMUnavailableError, BackendError)
@@ -36,6 +38,7 @@ def test_exception_hierarchy():
 
 def test_llm_port_is_protocol():
     from typing import Protocol
+
     assert issubclass(LLMPort, Protocol)
 
 
@@ -71,6 +74,8 @@ def test_render_and_extract_ports_are_runtime_checkable():
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from resumetailor.llm.litellm_adapter import LiteLLMAdapter
+from resumetailor.core.config import Settings as _Settings
+from resumetailor.core.security import SecurityPolicy as _SecurityPolicy
 from resumetailor.rendering.config import RenderProfile
 from resumetailor.rendering.runner import RenderCVAdapter
 
@@ -78,6 +83,7 @@ from resumetailor.rendering.runner import RenderCVAdapter
 @pytest.mark.anyio
 async def test_litellm_adapter_maps_auth_error():
     import litellm.exceptions as llm_exc
+
     adapter = LiteLLMAdapter(model="openrouter/test/model", api_key="key")
     with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm:
         mock_llm.side_effect = llm_exc.AuthenticationError(
@@ -90,6 +96,7 @@ async def test_litellm_adapter_maps_auth_error():
 @pytest.mark.anyio
 async def test_litellm_adapter_maps_rate_limit_to_unavailable():
     import litellm.exceptions as llm_exc
+
     adapter = LiteLLMAdapter(model="openrouter/test/model", api_key="key")
     with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm:
         mock_llm.side_effect = llm_exc.RateLimitError(
@@ -341,9 +348,49 @@ def test_render_profile_is_env_overridable(monkeypatch, tmp_path):
     assert profile.max_concurrent == 9
 
 
+@pytest.mark.parametrize(
+    "factory",
+    [
+        pytest.param(RenderProfile, id="RenderProfile"),
+        pytest.param(_SecurityPolicy, id="SecurityPolicy"),
+        pytest.param(_Settings, id="Settings"),
+    ],
+)
+def test_settings_classes_ignore_unrelated_dotenv_keys(factory, monkeypatch, tmp_path):
+    """One `.env` is shared by three settings classes; none may choke on it.
+
+    An `env_prefix` does not, on its own, keep the namespaces apart:
+    pydantic-settings reads *every* key in `.env` and then rejects the ones
+    that are not fields of the class being built. So the `.env` a developer
+    copies from `.env.example` made all three raise `extra_forbidden` --
+    `RenderProfile()` took down every real (non-`LLM_MOCK`) render including
+    `GET /api/master-resume/preview`, and `SecurityPolicy()` is built by the
+    middleware on every request, so it turned into a blanket 500 on every
+    route. Docker never reproduced any of it because `.dockerignore` keeps
+    `.env` out of the image.
+    """
+    (tmp_path / ".env").write_text(
+        "OPENROUTER_API_KEY=sk-or-v1-notarealkey\n"
+        "LLM_MODEL=openrouter/openai/gpt-oss-120b\n"
+        "LLM_MOCK=false\n"
+        "RENDER_TIMEOUT_S=12.5\n"
+        "SECURITY_MAX_UPLOAD_BODY_BYTES=4096\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    # The keys belonging to the other two classes are ignored, not fatal.
+    factory()
+
+    # ...and each prefixed class still reads its own key out of that same file.
+    assert RenderProfile().timeout_s == 12.5
+    assert _SecurityPolicy().max_upload_body_bytes == 4096
+
+
 @pytest.mark.anyio
 async def test_pymupdf_adapter_oversized_pdf_raises_extract_error():
     from resumetailor.pdf.extract import MAX_BYTES, PyMuPDFAdapter
+
     adapter = PyMuPDFAdapter()
     with pytest.raises(PDFExtractError):
         await adapter.extract(b"x" * (MAX_BYTES + 1))
@@ -408,6 +455,7 @@ async def test_simulator_extract_returns_text():
 def test_stub_backend_is_a_real_backend_api():
     """deps used to return the stub where a BackendAPI was declared."""
     from resumetailor.backend_api import BackendAPI, create_stub_backend
+
     assert isinstance(create_stub_backend(), BackendAPI)
 
 
@@ -499,9 +547,11 @@ async def test_simulator_stream_does_not_retrigger_once_a_tool_has_run():
 # Task 4 — Tier 2 ConfigurableBackendAPI (helpers/simulator.py)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.anyio
 async def test_configurable_backend_llm_complete():
     from tests.helpers.simulator import ConfigurableBackendAPI
+
     api = ConfigurableBackendAPI()
     api.sim_llm.set_complete_response("hello world")
     result = await api.complete([{"role": "user", "content": "hi"}])
@@ -512,6 +562,7 @@ async def test_configurable_backend_llm_complete():
 @pytest.mark.anyio
 async def test_configurable_backend_llm_error():
     from tests.helpers.simulator import ConfigurableBackendAPI
+
     api = ConfigurableBackendAPI()
     api.sim_llm.set_complete_error(LLMUnavailableError("down"))
     with pytest.raises(LLMUnavailableError):
@@ -521,6 +572,7 @@ async def test_configurable_backend_llm_error():
 @pytest.mark.anyio
 async def test_configurable_backend_render_error():
     from tests.helpers.simulator import ConfigurableBackendAPI
+
     api = ConfigurableBackendAPI()
     api.sim_pdf_render.set_error(RenderError("bad yaml"))
     with pytest.raises(RenderError):

@@ -168,6 +168,13 @@ class SecurityPolicy(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        # One `.env` is shared by three settings classes with three different
+        # prefixes, so each has to ignore the other two's keys. Without this,
+        # pydantic-settings loads every key in the file and then rejects the
+        # non-`SECURITY_` ones, and because `get_security_policy()` is called
+        # from the middleware on *every* request, that turned a local `.env`
+        # into a blanket 500 on every route.
+        extra="ignore",
     )
 
 

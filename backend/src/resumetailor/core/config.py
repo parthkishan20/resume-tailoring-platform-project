@@ -115,6 +115,10 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=True,
+        # Same reason as `SecurityPolicy` and `RenderProfile`: this class has no
+        # prefix of its own, so every `SECURITY_*` / `RENDER_*` key in the
+        # shared `.env` would otherwise land here as an extra and fail the boot.
+        extra="ignore",
     )
 
     @property

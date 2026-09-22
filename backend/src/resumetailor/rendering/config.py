@@ -52,6 +52,14 @@ class RenderProfile(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        # `env_prefix` alone does not keep the two namespaces apart: pydantic-
+        # settings loads every key in `.env` and then forbids the ones that are
+        # not fields here, so a local `.env` carrying `OPENROUTER_API_KEY` /
+        # `LLM_MODEL` / `LLM_MOCK` made `RenderProfile()` raise `extra_forbidden`
+        # and took every real render down with it. Docker never saw it because
+        # `.dockerignore` keeps `.env` out of the image, so this only ever fired
+        # on a local dev server with `LLM_MOCK=false`.
+        extra="ignore",
     )
 
     def theme(self) -> str:
