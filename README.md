@@ -78,8 +78,8 @@ Light, dark, or system, set from a settings dialog and applied instantly across 
 
 ```bash
 # 1. Clone and configure
-git clone https://github.com/your-username/resume-tailoring-platform.git
-cd resume-tailoring-platform
+git clone https://github.com/your-username/resume-tailoring-platform-project.git
+cd resume-tailoring-platform-project
 cp .env.example .env
 # edit .env and set OPENROUTER_API_KEY=sk-or-...
 

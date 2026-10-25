@@ -32,7 +32,7 @@ deterministic simulator when `LLM_MOCK=true`, and both the unit suite and the e2
 
 ```bash
 git clone <repo>
-cd resume-tailoring-platform
+cd resume-tailoring-platform-project
 
 cp .env.example .env          # for running the app; not needed for tests
 make install                  # uv sync --locked --all-groups, then npm ci
