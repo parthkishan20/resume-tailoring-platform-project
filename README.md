@@ -26,18 +26,20 @@ Both themes are first-class (light is the default, dark is a full token swap), s
 
 | Assistant, a completed tool call | Settings: generation rules |
 |---|---|
-| ![The assistant confirming it generated a tailored resume, with the new entry visible in the Library](docs/screenshots/assistant-chat-action-dark.png) | ![The generation rules dialog: per-section limits applied to every tailored resume](docs/screenshots/settings-generation-rules-dark.png) |
+| ![The assistant confirming a rules update it made through a tool call, with the request usage counter in the panel header](docs/screenshots/assistant-chat-action-dark.png) | ![The generation rules dialog: per-section limits applied to every tailored resume](docs/screenshots/settings-generation-rules-dark.png) |
 
-| Settings: appearance |
-|---|
-| ![The appearance dialog: light, dark, or system](docs/screenshots/settings-appearance-dark.png) |
+| Settings: assistant prompt | Settings: appearance |
+|---|---|
+| ![The assistant prompt dialog: the standing instructions the assistant reads before every message](docs/screenshots/settings-assistant-prompt-dark.png) | ![The appearance dialog: light, dark, or system](docs/screenshots/settings-appearance-dark.png) |
+
+> The screenshots are captured against the deterministic stub (`LLM_MOCK=true`) with a fictional resume, so the assistant's reply text and the evaluation's score and keyword chips are the stub's canned output, not a real model's. The layout and behavior shown are the real app's.
 
 ---
 
 ## Features
 
 **The workspace**
-Three zones: a navigation rail (Master, Library, and settings), a center document region, and a right-hand inspector. Whatever document is open, master or generated, uses the same Editor / Split / Preview control, so a generated resume gets exactly the same editing surface as the master.
+Three zones: a navigation rail (Master, Library, and the Generation rules, Assistant prompt and Appearance settings), a center document region, and a right-hand inspector. Whatever document is open, master or generated, uses the same Editor / Split / Preview control, so a generated resume gets exactly the same editing surface as the master.
 
 **Master resume**
 Write your complete career history once in [rendercv](https://rendercv.com) YAML, with full syntax highlighting in both themes. The live PDF preview renders alongside the editor. Import an existing PDF and the AI converts it to YAML for you. Edits autosave a local draft and warn before you navigate away with unsaved changes.
@@ -55,7 +57,10 @@ Every generated resume, sortable by date or job description and paged past the f
 Per-section numeric limits (max bullets, max characters, max entries) applied to every tailoring run, editable from a settings dialog, no prompt-editing required.
 
 **Assistant**
-A real chat surface, docked in the inspector so you can watch your document change as it works. It can edit your master resume, generate a tailored resume for a job description, evaluate a resume against one, or update your generation rules, each backed by the same validated write path the rest of the app uses, not a suggestion you have to apply yourself.
+A real chat surface, docked in the inspector so you can watch your document change as it works. It can edit your master resume, generate a tailored resume for a job description, evaluate a resume against one, or update your generation rules, each backed by the same validated write path the rest of the app uses, not a suggestion you have to apply yourself. The panel header carries a request counter (calls this minute and today against the provider's rate limit, set by `LLM_RATE_LIMIT_PER_MINUTE` and `LLM_RATE_LIMIT_PER_DAY`). It is informational only and is never enforced by the app.
+
+**Assistant prompt**
+The standing instructions the assistant reads before every message, editable from a settings dialog, with a reset to the default. A change applies to every conversation, including the current one.
 
 **Appearance**
 Light, dark, or system, set from a settings dialog and applied instantly across every surface, including the YAML editor.
@@ -217,6 +222,8 @@ LiteLLM is used under the hood, so any provider it supports works: set `LLM_MODE
 | `GRACEFUL_SHUTDOWN_TIMEOUT_S` | `60.0` | How long shutdown waits for in-flight SSE streams (generation, chat, evaluation) to finish before the connection is dropped. |
 | `REAPER_INTERVAL_S` | `3600.0` | How often the background orphan reaper re-scans generated PDFs against the database after its one guaranteed run at startup. |
 | `REAPER_DELETE_GRACE_S` | `300.0` | How young a PDF file must be to be exempt from the reaper's delete pass, protecting a file a concurrent generation is still writing. |
+| `LLM_RATE_LIMIT_PER_MINUTE` | `20` | Per-minute ceiling the assistant's usage counter displays. Informational only, never enforced. |
+| `LLM_RATE_LIMIT_PER_DAY` | `50` | Per-day (calendar UTC) ceiling the usage counter displays. Informational only, never enforced. |
 
 ---
 
