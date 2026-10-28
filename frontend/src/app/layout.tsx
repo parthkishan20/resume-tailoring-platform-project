@@ -17,9 +17,39 @@ import "./globals.css";
  * preference, with light as the base token definition.
  */
 
+/**
+ * Link-preview (Open Graph and Twitter card) metadata.
+ *
+ * The app has no public deployment, so the canonical URL is the GitHub repo and
+ * the card image is served by raw.githubusercontent.com from `public/og-image.png`
+ * on `main`. Both must be absolute https URLs for LinkedIn's crawler. When the app
+ * gets a real host, change these two constants (and keep the trailing slash).
+ * Titles stay under 70 characters and descriptions under 160, with no em-dashes.
+ */
+const SITE_URL = "https://github.com/parthkishan20/resume-tailoring-platform-project/";
+const OG_IMAGE_URL =
+  "https://raw.githubusercontent.com/parthkishan20/resume-tailoring-platform-project/main/frontend/public/og-image.png";
+const OG_TITLE = "ResumeTailor: AI resume tailoring workstation";
+const OG_DESCRIPTION =
+  "Keep one master resume in YAML, tailor it to any job description, and edit it by chat with an AI assistant.";
+
 export const metadata: Metadata = {
   title: "ResumeTailor",
-  description: "AI-powered resume tailoring workstation",
+  description: OG_DESCRIPTION,
+  openGraph: {
+    type: "website",
+    siteName: "Parthkumar Patel",
+    title: OG_TITLE,
+    description: OG_DESCRIPTION,
+    url: SITE_URL,
+    images: [{ url: OG_IMAGE_URL, width: 1200, height: 627, alt: "ResumeTailor screenshot" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: OG_TITLE,
+    description: OG_DESCRIPTION,
+    images: [OG_IMAGE_URL],
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
